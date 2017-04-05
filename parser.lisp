@@ -169,46 +169,30 @@ value in the current (i.e. passed in) state.
 
 |#
 
-#+(or)(defmacro defparser (name (&rest args) &body body)
-  ;; Should check for duplicate names and error.
-  `(defun ,name (,@args)
-     (let (,@(extract-bound-names body))
-       ;; Mark starting point.
-
-       ;; Evaluate each form but the last as a parser. If it matches,
-       ;; evaluate next form with new starting point.
-
-       ;; For binding forms (-> ...), assign the result of the parser to
-       ;; the appropriate name.
-
-       ;; Evaluate the last form
-       ,last-form)))
-
-#+(or)(defun foo (form)
-  (destructuring-bind (defparser name (&rest args) &rest body) form
-    (declare (ignore defparser name args))
-    (let* ((symbols (uniq-names body))
-           (names (defined-names body)))
-      (format t "~{~&~(~a~)~}" (sort (remove-if #'fboundp (set-difference symbols names)) #'string<)))))
-
-
 (defun compile-parser (p)
   (destructuring-bind (defparser name (&rest args) &rest body) p
     (declare (ignore defparser))
     (%compile-parser name args body)))
 
 (defun %compile-parser (name args body)
-  (let* ((productions (mapcar #'production body))
-         (names (mapcar #'(lambda (x) (getf x :name)) productions)))
+  (let* ((productions (mapcar #'normalize-production body))
+         (names (mapcar #'caar productions)))
     `(defun ,name (text position ,@args)
        (flet (,@(loop for p in productions collect
-                    (destructuring-bind (&key name args body) p
+                    (destructuring-bind ((name &rest args) &rest body) p
                       `(,name (,@args text state position)
                               ,(compile-progn body 'text 'state 'position names)))))
          (,(first names)
            text
            (list ,@(mapcar #'(lambda (x) `(cons ',x ,x)) args))
            position)))))
+
+(defun normalize-production (p)
+  (destructuring-bind (x &rest body) p
+    (typecase x
+      (cons `(,x ,@body))
+      (symbol `((,x) ,@body)))))
+
 
 (defun production (p)
   "A parser is made up of productions."
@@ -224,16 +208,8 @@ value in the current (i.e. passed in) state.
           (t (error "Name must be SYMBOL or LIST.")))
       `(:name ,name :args ,extra-args :body ,body))))
 
-(defun production-names (p)
-  "The names of the productions defined in the parser."
-  (mapcar #'(lambda (x) (getf x :name)) (mapcar #'production (cdddr p))))
-
 (defun grammar-p (name names)
   (or (member name names) (get name 'parser-function)))
-
-(defun compile-production (p names)
-  (destructuring-bind (&key name args body) p
-    `(:name ,name :function (lambda (,@args text state position) ,(compile-progn body 'text 'state 'position names)))))
 
 (defun compile-progn (body txt st pos names)
   (unless (null body)
@@ -255,6 +231,12 @@ value in the current (i.e. passed in) state.
           (cond
             ((parser-function-invocation-p form names)  (comp form (gensym "R")))
             ((binding-form-p form) (comp (rewrite-form (cadr form) names) (caddr form)))
+            ((stringp form)
+             (with-gensyms (r)
+               `(multiple-value-bind (,ok ,r ,s ,p) ,(compile-string form text s p)
+                  (if ,ok
+                      ,(or continuation `(values t ,r ,s ,p))
+                      ,failure))))
             (t form))))))
 
 (defun compile-or (body txt st pos names)
@@ -277,21 +259,39 @@ value in the current (i.e. passed in) state.
         (cond
           ((parser-function-invocation-p form names)  (comp form (gensym "R")))
           ((binding-form-p form) (error "Binding forms not allowed in OR expressions."))
-          (t (error "Expression ~a not allowed in OR expression" form)))))))
+          ((stringp form)
+           `(multiple-value-bind (,ok ,result ,s ,p) ,(compile-string form text s p)
+              (if ,ok
+                  (value t ,result ,s ,p)
+                  ,(or continuation failure)))
+          (t form))))))
 
 (defun compile-expression (exp names)
-  (cond
-    ((parser-function-invocation-p exp names)
-     (compile-parser-function-expression (rewrite-form exp names) names))
-    ((and (consp exp) (eql (car exp) 'progn))
-     (with-gensyms (text state position)
+  (with-gensyms (text state position)
+    (cond
+      ((parser-function-invocation-p exp names)
+       (compile-parser-function-expression (rewrite-form exp names) names))
+      ((and (consp exp) (eql (car exp) 'progn))
        `(lambda (,text ,state ,position)
-          ,(compile-progn (rest exp) text state position names))))
-    ((and (consp exp) (eql (car exp) 'or))
-     (with-gensyms (text state position)
+          ,(compile-progn (rest exp) text state position names)))
+      ((and (consp exp) (eql (car exp) 'or))
        `(lambda (,text ,state ,position)
-          ,(compile-or (rest exp) text state position names))))
-    (t exp)))
+          ,(compile-or (rest exp) text state position names)))
+      ((stringp exp) (thunk (compile-string exp text state position) text state position))
+      (t exp))))
+
+(defun thunk (exp text state position)
+  `(lambda (,text ,state ,position) ,exp))
+
+(defun compile-string (str text state position)
+  `(matching ,str ,(length str) ,text ,state ,position))
+
+(defun matching (s len text state position)
+  (let* ((end (+ len position))
+         (ok (string= s text :start2 position :end2 end)))
+    (if ok
+        (values t s state end)
+        (values nil nil state position))))
 
 (defun compile-parser-function-expression (exp names)
   (destructuring-bind (name &rest args) exp
@@ -306,36 +306,17 @@ value in the current (i.e. passed in) state.
       `(,name ,@(mapcar #'comp args) ,txt ,s ,p))))
 
 (defun rewrite-form (form names)
+  "Rewrite bare symbols naming parser productions or parser functions
+into cannonical list from."
   (cond
-    ((parser-function-symbol-invocation-p form names) (list form))
+    ((and (symbolp form) (grammar-p form names)) (list form))
     (t form)))
-
-(defun parser-function-symbol-invocation-p (form names)
-  (and (symbolp form) (grammar-p form names)))
 
 (defun parser-function-invocation-p (form names)
   (and (consp form) (symbolp (car form)) (grammar-p (car form) names)))
 
 (defun binding-form-p (form)
   (and (consp form) (eql (car form) '->)))
-
-
-
-(defun uniq-names (form)
-  (cond
-    ((consp form)
-     (sort (delete-duplicates
-            (let ((s (car form))
-                  (rest (mapcan #'uniq-names (remove-if (complement #'consp) (cdr form)))))
-              (if (and (symbolp s) (not (keywordp s)))
-                  (cons (car s) rest)
-                  rest)))
-           #'string<))
-    (t nil)))
-
-
-(defun call-parser (p text state position)
-  (funcall p text state position))
 
 
 (defmacro defparserfun (name (&rest args) &body body)
@@ -353,7 +334,7 @@ value in the current (i.e. passed in) state.
 (defparserfun try (p text state position)
   "Attempt to parse using p, moving forward if it succeeds. However if
 it fails, it does not consume any input."
-  (multiple-value-bind (ok r ns np) (call-parser p text state position)
+  (multiple-value-bind (ok r ns np) (funcall p text state position)
     (if ok
         (values t r ns np)
         (values nil nil state position))))
@@ -364,7 +345,7 @@ acceptable number of times to match."
   (loop with r = nil
      while t do
        (multiple-value-bind (ok result new-state new-position)
-           (call-parser p text state position)
+           (funcall p text state position)
          (cond
            (ok
             (push r result)
@@ -383,15 +364,14 @@ acceptable number of times to match."
 (defparserfun not-followed-by (p text state position)
   "Match only if not followed by P."
   (multiple-value-bind (ok r s pos)
-      (call-parser p text state position)
+      (funcall p text state position)
     (declare (ignore r s pos))
     (values (not ok) text state position)))
 
 (defparserfun optional (p text state position)
   "Match P if we can. Doesn't return anything. Only fails if P
 consumes input before failing."
-  (multiple-value-bind (ok r s pos)
-      (call-parser p text state position)
+  (multiple-value-bind (ok r s pos) (funcall p text state position)
     (declare (ignore ok r))
     (values (= pos position) t nil s pos)))
 
