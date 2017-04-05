@@ -214,7 +214,8 @@ value in the current (i.e. passed in) state.
 (defun compile-progn (body txt st pos names)
   (unless (null body)
     (with-gensyms (s p)
-      (compile-form-in-progn
+      (compile-wrapped-form
+       #'progn-wrapper
        (first body)
        txt st pos s p names
        (compile-progn (rest body) txt s p names)))))
@@ -224,6 +225,21 @@ value in the current (i.e. passed in) state.
      (if ,ok
          ,(or continuation `(values t ,result ,s ,p))
          ,failure)))
+
+(defun compile-or (body txt st pos names)
+  (unless (null body)
+    (with-gensyms (s p)
+      (compile-wrapped-form
+       #'or-wrapper
+       (first body)
+       txt st pos s p names
+       (compile-or (rest body) txt s p names)))))
+
+(defun or-wrapper (expr ok result s p continuation failure)
+  `(multiple-value-bind (,ok ,result ,s ,p) ,expr
+     (if ,ok
+         (value t ,result ,s ,p)
+         ,(or continuation failure))))
 
 (defun compile-wrapped-form (wrapper form text orig-state orig-position s p names continuation)
   (with-gensyms (ok)
@@ -240,28 +256,6 @@ value in the current (i.e. passed in) state.
             ((binding-form-p form) (comp (cadr form) (caddr form)))
             ((stringp form) (wrap (compile-string form text s p) (gensym "R")))
             (t form))))))
-
-(defun compile-form-in-progn (form text orig-state orig-position s p names continuation)
-  (compile-wrapped-form
-   #'progn-wrapper form text orig-state orig-position s p names continuation))
-
-(defun compile-form-in-or (form text orig-state orig-position s p names continuation)
-  (compile-wrapped-form
-   #'or-wrapper form text orig-state orig-position s p names continuation))
-
-(defun compile-or (body txt st pos names)
-  (unless (null body)
-    (with-gensyms (s p)
-      (compile-form-in-or
-       (first body)
-       txt st pos s p names
-       (compile-or (rest body) txt s p names)))))
-
-(defun or-wrapper (expr ok result s p continuation failure)
-  `(multiple-value-bind (,ok ,result ,s ,p) ,expr
-     (if ,ok
-         (value t ,result ,s ,p)
-         ,(or continuation failure))))
 
 (defun compile-expression (exp names)
   (with-gensyms (text state position)
