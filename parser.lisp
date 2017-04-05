@@ -223,20 +223,17 @@ value in the current (i.e. passed in) state.
   (with-gensyms (ok)
       (let ((form (rewrite-form form names))
             (failure `(values nil nil ,orig-state ,orig-position)))
-        (flet ((comp (form result)
-                 `(multiple-value-bind (,ok ,result ,s ,p) ,(compile-parser-function-invocation form names text orig-state orig-position)
-                    (if ,ok
-                        ,(or continuation `(values t ,result ,s ,p))
-                        ,failure))))
+        (labels ((wrap (expr result)
+                   `(multiple-value-bind (,ok ,result ,s ,p) ,expr
+                      (if ,ok
+                          ,(or continuation `(values t ,result ,s ,p))
+                          ,failure)))
+                 (comp (form result)
+                   (wrap (compile-parser-function-invocation form names text orig-state orig-position) result)))
           (cond
             ((parser-function-invocation-p form names)  (comp form (gensym "R")))
             ((binding-form-p form) (comp (rewrite-form (cadr form) names) (caddr form)))
-            ((stringp form)
-             (with-gensyms (r)
-               `(multiple-value-bind (,ok ,r ,s ,p) ,(compile-string form text s p)
-                  (if ,ok
-                      ,(or continuation `(values t ,r ,s ,p))
-                      ,failure))))
+            ((stringp form) (wrap (compile-string form text s p) (gensym "R")))
             (t form))))))
 
 (defun compile-or (body txt st pos names)
@@ -251,19 +248,17 @@ value in the current (i.e. passed in) state.
   (with-gensyms (ok)
     (let ((form (rewrite-form form names))
           (failure `(values nil nil ,orig-state ,orig-position)))
-      (flet ((comp (form result)
-                 `(multiple-value-bind (,ok ,result ,s ,p) ,(compile-parser-function-invocation form names text orig-state orig-position)
+      (labels ((wrap (expr result)
+                 `(multiple-value-bind (,ok ,result ,s ,p) ,expr
                     (if ,ok
                         (value t ,result ,s ,p)
-                        ,(or continuation failure)))))
+                        ,(or continuation failure))))
+               (comp (form result)
+                 (wrap (compile-parser-function-invocation form names text orig-state orig-position) result)))
         (cond
           ((parser-function-invocation-p form names)  (comp form (gensym "R")))
           ((binding-form-p form) (error "Binding forms not allowed in OR expressions."))
-          ((stringp form)
-           `(multiple-value-bind (,ok ,result ,s ,p) ,(compile-string form text s p)
-              (if ,ok
-                  (value t ,result ,s ,p)
-                  ,(or continuation failure)))
+          ((stringp form) (wrap (compile-string form text s p) (gensym "R")))
           (t form))))))
 
 (defun compile-expression (exp names)
