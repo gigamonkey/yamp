@@ -85,7 +85,7 @@
      `(:blockquote ,@es))
 
     (blockquote-element
-     (try (not-followed-by (progn (count 3 " ") (none-of " "))))
+     (try (not-followed-by (progn (counted 3 " ") (none-of " "))))
      element)
 
     (linkdef
@@ -189,12 +189,12 @@
      (or (many1 (try eol)) eod))
 
     (indentation
-     (try (count (- (state current) (state so-far)) " "))
+     (try (counted (- (state current) (state so-far)) " "))
      (setf (state so-far) (state current)))
 
     ((indented n p)
      (with-state ((current (+ current n)))
-       (try (look-ahead (count n " ")))
+       (try (look-ahead (counted n " ")))
        (-> p)))
 
     (newline (setf (state so-far) 0) #.(string #\Newline))
