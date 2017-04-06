@@ -212,6 +212,8 @@ value in the current (i.e. passed in) state.
   (or (member name names) (get name 'parser-function)))
 
 (defun compile-progn (body txt st pos names)
+  "Compile the forms in an PROGN so that the PROGN matches if each of
+the elements matches in sequence."
   (unless (null body)
     (with-gensyms (s p)
       (compile-wrapped-form
@@ -227,6 +229,8 @@ value in the current (i.e. passed in) state.
          ,failure)))
 
 (defun compile-or (body txt st pos names)
+  "Compile the forms in an OR so that the OR matches if any of the
+elements matches, returning the result from the first match."
   (unless (null body)
     (with-gensyms (s p)
       (compile-wrapped-form
@@ -304,11 +308,12 @@ into cannonical list from."
     (t form)))
 
 (defun parser-function-invocation-p (form names)
-  (and (consp form) (symbolp (car form)) (grammar-p (car form) names)))
+  (or
+   (and (symbolp form) (grammar-p form names))
+   (and (consp form) (symbolp (car form)) (grammar-p (car form) names))))
 
 (defun binding-form-p (form)
   (and (consp form) (eql (car form) '->)))
-
 
 (defmacro defparserfun (name (&rest args) &body body)
   `(progn
