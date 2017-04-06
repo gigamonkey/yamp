@@ -272,6 +272,9 @@ elements matches, returning the result from the first match."
             ((stringp form)
              (wrap (compile-string form text s-in p-in)))
 
+            ((characterp form)
+             (wrap (compile-character form text s-in p-in)))
+
             (t form))))))
 
 (defun compile-expression (exp names)
@@ -299,10 +302,16 @@ elements matches, returning the result from the first match."
         ((stringp exp)
          (thunk (compile-string exp text state position)))
 
+        ((characterp exp)
+         (thunk (compile-character exp text state position)))
+
         (t exp)))))
 
 (defun compile-string (str text state position)
   `(matching ,str ,(length str) ,text ,state ,position))
+
+(defun compile-character (char text state position)
+  `(matching-char ,char ,text ,state ,position))
 
 (defun matching (s len text state position)
   (let* ((end (+ len position))
@@ -310,6 +319,11 @@ elements matches, returning the result from the first match."
     (if ok
         (values t s state end)
         (values nil nil state position))))
+
+(defun matching-char (c text state position)
+  (if (char= c (char text position))
+      (values t c state (1+ position))
+      (values nil nil state position)))
 
 (defun compile-match (parser txt s p)
   `(funcall ,parser ,txt ,s ,p))
