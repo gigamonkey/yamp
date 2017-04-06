@@ -244,7 +244,7 @@ elements matches, returning the result from the first match."
   (with-gensyms (ok)
     (let ((failure `(values nil nil ,s-in ,p-in)))
       (labels ((wrap (expr) (funcall wrapper expr ok r s p continuation failure))
-               (self (expr) (compile-wrapped-form wrapper expr text s-in p-in s p names (gensyms "R") nil)))
+               (self (expr) (compile-wrapped-form wrapper expr text s-in p-in s p names (gensym "R") nil)))
           (cond
 
             ((parser-function-invocation-p form names)
