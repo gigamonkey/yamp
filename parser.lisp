@@ -4,6 +4,13 @@
 
 (in-package :com.gigamonkeys.yamp)
 
+;;; TODO:
+;;;
+;;; - state manipulation
+;;;
+;;; - IF forms
+;;;
+
 #|
 
 * Evaluation rules
@@ -214,10 +221,12 @@ the elements matches in sequence."
        (compile-progn (rest body) txt s p names (gensym "R"))))))
 
 (defun progn-wrapper (expr ok result s p continuation failure)
-  `(multiple-value-bind (,ok ,result ,s ,p) ,expr
-     (if ,ok
-         ,(or continuation `(values t ,result ,s ,p))
-         ,failure)))
+  (if (null continuation)
+      expr
+      `(multiple-value-bind (,ok ,result ,s ,p) ,expr
+         (if ,ok
+             ,(or continuation `(values t ,result ,s ,p))
+             ,failure))))
 
 (defun compile-or (body txt st pos names result)
   "Compile the forms in an OR so that the OR matches if any of the
@@ -272,6 +281,7 @@ elements matches, returning the result from the first match."
 
       ((progn-p exp)
        (thunk (compile-progn (rest exp) text state position names (gensym "R")) text state position))
+
       ((or-p exp)
        (thunk (compile-or (rest exp) text state position names (gensym "R")) text state position))
 
