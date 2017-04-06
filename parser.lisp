@@ -189,10 +189,10 @@ value in the current (i.e. passed in) state.
 
 (defun normalize-production (p)
   (destructuring-bind (x &rest body) p
-    (typecase x
-      (cons `(,x ,@body))
-      (symbol `((,x) ,@body)))))
-
+    `(,(typecase  x
+         (cons x)
+         (symbol (list x)))
+       ,@body)))
 
 (defun production (p)
   "A parser is made up of productions."
