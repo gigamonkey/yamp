@@ -243,7 +243,8 @@ elements matches, returning the result from the first match."
 (defun compile-wrapped-form (wrapper form text s-in p-in s p names r continuation)
   (with-gensyms (ok)
     (let ((failure `(values nil nil ,s-in ,p-in)))
-      (labels ((wrap (expr) (funcall wrapper expr ok r s p continuation failure)))
+      (labels ((wrap (expr) (funcall wrapper expr ok r s p continuation failure))
+               (self (expr) (compile-wrapped-form wrapper expr text s-in p-in s p names (gensyms "R") nil)))
           (cond
 
             ((parser-function-invocation-p form names)
@@ -251,23 +252,20 @@ elements matches, returning the result from the first match."
 
             ((form-p '-> form)
              (destructuring-bind (expr var) (cdr form)
-               (let ((cexp (compile-wrapped-form wrapper expr text s-in p-in s p names (gensym "R") nil)))
-                 (funcall wrapper cexp ok var s p continuation failure))))
+               (funcall wrapper (self expr) ok var s p continuation failure)))
 
             ((form-p 'progn form)
-             (compile-progn (rest form) text s-in p-in names r))
+             (wrap (compile-progn (rest form) text s-in p-in names r)))
 
             ((form-p 'or form)
-             (compile-or (rest form) text s-in p-in names r))
+             (wrap (compile-or (rest form) text s-in p-in names r)))
 
             ((form-p 'match form)
              (wrap (compile-match (cadr form) text s-in p-in)))
 
             ((form-p 'if form)
              (destructuring-bind (test then else) (cdr form)
-               (wrap `(if ,test
-                          ,(compile-wrapped-form wrapper then text s-in p-in s p names (gensym "R") nil)
-                          ,(compile-wrapped-form wrapper else text s-in p-in s p names (gensym "R") nil)))))
+               (wrap `(if ,test ,(self then) ,(self else)))))
 
             ((stringp form)
              (wrap (compile-string form text s-in p-in)))
@@ -275,7 +273,7 @@ elements matches, returning the result from the first match."
             ((characterp form)
              (wrap (compile-character form text s-in p-in)))
 
-            (t form))))))
+            (t `(values t ,form ,s-in ,p-in)))))))
 
 (defun compile-expression (exp names)
   (with-gensyms (text state position)
