@@ -380,3 +380,10 @@ consumes input before failing."
         (if ok
             (counted (1- n) p text s pos)
             (values nil nil state position)))))
+
+(defparserfun look-ahead (p text state position)
+  (multiple-value-bind (ok r s pos) (funcall p text state position)
+    (declare (ignore r s pos))
+    (if ok
+        (values t nil state position)
+        (values nil nil state position))))
