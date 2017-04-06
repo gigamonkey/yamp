@@ -8,7 +8,7 @@
 ;;;
 ;;; - state manipulation
 ;;;
-;;; - IF forms
+;;; - MOAR gensyms
 ;;;
 
 #|
@@ -201,11 +201,6 @@ value in the current (i.e. passed in) state.
          (symbol (list x)))
        ,@body)))
 
-(defun production (p)
-  "A parser is made up of productions."
-  (destructuring-bind ((name &rest args) &rest body) p
-    `(:name ,name :args ,args :body ,body)))
-
 (defun grammar-p (name names)
   (or (member name names) (get name 'parser-function)))
 
@@ -254,53 +249,57 @@ elements matches, returning the result from the first match."
             ((parser-function-invocation-p form names)
              (wrap (compile-parser-call form names text s-in p-in)))
 
-            ((binding-form-p form)
+            ((form-p '-> form)
              (destructuring-bind (expr var) (cdr form)
                (let ((cexp (compile-wrapped-form wrapper expr text s-in p-in s p names (gensym "R") nil)))
                  (funcall wrapper cexp ok var s p continuation failure))))
 
-            ((progn-p form)
+            ((form-p 'progn form)
              (compile-progn (rest form) text s-in p-in names r))
 
-            ((or-p form)
+            ((form-p 'or form)
              (compile-or (rest form) text s-in p-in names r))
+
+            ((form-p 'match form)
+             (wrap (compile-match (cadr form) text s-in p-in)))
+
+            ((form-p 'if form)
+             (destructuring-bind (test then else) (cdr form)
+               (wrap `(if ,test
+                          ,(compile-wrapped-form wrapper then text s-in p-in s p names (gensym "R") nil)
+                          ,(compile-wrapped-form wrapper else text s-in p-in s p names (gensym "R") nil)))))
 
             ((stringp form)
              (wrap (compile-string form text s-in p-in)))
-
-            ((match-form-p form)
-             (wrap (compile-match (cadr form) text s-in p-in)))
 
             (t form))))))
 
 (defun compile-expression (exp names)
   (with-gensyms (text state position)
-    (cond
-      ((parser-function-invocation-p exp names)
-       (maybe-thunk (rewrite-form exp names) names))
+    (labels ((thunk (exp)
+               (if (and (consp exp) (grammar-p (car exp) names) (= (length exp) 4))
+                   `(function ,(car exp))
+                   `(lambda (,text ,state ,position) ,exp))))
+      (cond
+        ((parser-function-invocation-p exp names)
+         (thunk (compile-parser-call exp names text state position)))
 
-      ((progn-p exp)
-       (thunk (compile-progn (rest exp) text state position names (gensym "R")) text state position))
+        ((form-p 'progn exp)
+         (thunk (compile-progn (rest exp) text state position names (gensym "R"))))
 
-      ((or-p exp)
-       (thunk (compile-or (rest exp) text state position names (gensym "R")) text state position))
+        ((form-p 'or exp)
+         (thunk (compile-or (rest exp) text state position names (gensym "R"))))
 
-      ((match-form-p exp)
-       ())
+        ((form-p 'if exp)
+         (destructuring-bind (test then else) (cdr exp)
+           `(if ,test
+                ,(compile-expression then names)
+                ,(compile-expression else names))))
 
-      ((stringp exp)
-       (thunk (compile-string exp text state position) text state position))
-      (t exp))))
+        ((stringp exp)
+         (thunk (compile-string exp text state position)))
 
-(defun thunk (exp text state position)
-  `(lambda (,text ,state ,position) ,exp))
-
-(defun maybe-thunk (exp names)
-  (destructuring-bind (name &rest args) exp
-    (if args
-        (with-gensyms (txt s p)
-          (thunk (compile-parser-call exp names txt s p) txt s p))
-        `(function ,name))))
+        (t exp)))))
 
 (defun compile-string (str text state position)
   `(matching ,str ,(length str) ,text ,state ,position))
@@ -332,23 +331,13 @@ into cannonical list from."
    (and (symbolp form) (grammar-p form names))
    (and (consp form) (symbolp (car form)) (grammar-p (car form) names))))
 
-(defun binding-form-p (form)
-  (and (consp form) (eql (car form) '->)))
-
-(defun progn-p (form)
-  (and (consp form) (eql (car form) 'progn)))
-
-(defun or-p (form)
-  (and (consp form) (eql (car form) 'or)))
-
-(defun match-form-p (form)
-  (and (consp form) (eql (car form) 'match)))
+(defun form-p (what form)
+  (and (consp form) (eql (car form) what)))
 
 (defmacro defparserfun (name (&rest args) &body body)
   `(progn
      (setf (get ',name 'parser-function) t)
      (defun ,name (,@args) ,@body)))
-
 
 (defparserfun any-char (text state position)
   "Match a single character. Succeeds everywhere except at the EOF."
