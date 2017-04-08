@@ -1,0 +1,48 @@
+This is a paragraph\note{This is an inline note.} blah blah blah.
+
+This is another paragraph.\note{This is a note.
+
+That has its own paragraphs.
+
+And another.} And this is the rest of the second main paragraph.
+
+And this is yet another paragraph.\note{This is a note.
+
+That has its own paragraphs. With \i{formatting foo} in them.
+
+And another.} And this is the rest of the third main paragraph.
+
+
+And this is a fourth paragraph.\note{This is a note.
+
+That has its own paragraphs.
+
+  # A a list in the note.
+
+  # With a few items.
+
+And another paragraph.} And this is the rest of the fourth main paragraph.
+
+
+And this is a fifth paragraph.\note{This is a note.
+
+That has its own paragraphs.
+
+  # A a list in the note.
+
+  # With a few items.
+
+  # That end the note} And this is the rest of the fifth main paragraph.
+
+And this is a sixth paragraph.\note{This is a note.
+
+That has its own paragraphs.
+
+  # A a list in the note.
+
+  # With a few items.
+
+  # That end the note
+
+} And this is the rest of the sixth main paragraph.
+

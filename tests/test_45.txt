@@ -1,0 +1,9 @@
+Regular paragraph.
+
+## foo
+
+   Verbatim stuff. Biff ##. Bam boom! < \{
+
+##.
+
+Last regular paragraph.

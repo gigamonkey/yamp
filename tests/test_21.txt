@@ -1,0 +1,14 @@
+This is a pragraph.\note{This is a subdocument.
+
+With it's own paragraphs.
+
+And some more.} And the rest.
+
+  This is a blockquote.\note{This is a subdocument.
+
+  With it's own paragraphs.
+
+  And some more.} And the rest of the blockquote.
+
+And a final paragraph.
+

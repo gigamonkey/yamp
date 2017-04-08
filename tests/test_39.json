@@ -1,0 +1,8 @@
+["body",
+ ["link_def",["link","link text"],["url","http//www.example.com/"]],
+ ["p",["link","link text"]," in a paragraph."],
+ ["p","And ",["link","link text"]," in a paragraph."],
+ ["p",["link","link text"]],
+ ["p",["link","link text"]," < in a paragraph with a <"],
+ ["p",["link","link text"], " ", ["link","another link"]],
+ ["p",["link","link text"]," ", ["link","another link"]," with more text"]]

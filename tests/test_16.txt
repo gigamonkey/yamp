@@ -1,0 +1,9 @@
+\* A paragraph that starts with a *
+
+  \# A blockquote that starts with a #
+
+Another paragraph with some \i{italic \} including a brace} boo.
+
+  \- A blockquote that starts with a -
+
+Done.

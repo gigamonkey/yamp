@@ -1,0 +1,8 @@
+A paragraph
+
+  # This is the first item.
+    This is part of the same paragraph.
+
+    This is still part of the first item.
+
+A new paragraph.

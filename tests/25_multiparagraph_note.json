@@ -1,0 +1,6 @@
+["body",
+ ["p","This is a regular paragraph.",
+  ["note",
+   ["p","This is an embedded note."],
+   ["p","It has two paragraphs."]],
+  " Here's the rest of the outer paragraph."]]

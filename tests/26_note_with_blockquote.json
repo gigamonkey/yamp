@@ -1,0 +1,8 @@
+["body",
+ ["p","This is a regular paragraph.",
+  ["note",
+   ["p","This is an embedded note."],
+   ["blockquote",
+    ["p","This is a blockquote in the note."]],
+   ["p","Back to regular."]],
+  " Here's the rest of the outer paragraph."]]

@@ -1,0 +1,11 @@
+Regular paragraph\note{* Header in note
+
+** Another header in note
+
+  Blockquote.
+
+Regular paragraph
+
+   Verbatim \ verbatim
+
+} end of main paragraph.

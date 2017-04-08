@@ -7,8 +7,11 @@
   :description "Yet Another Markup Parser."
   :components
   ((:file "packages")
-   (:file "markup" :depends-on ("packages"))
-   (:file "tests" :depends-on ("packages")))
+   (:file "parser" :depends-on ("packages"))
+   (:file "markup" :depends-on ("packages" "parser"))
+   (:file "tests" :depends-on ("packages" "markup")))
   :depends-on
-  (:com.gigamonkeys.utilities
-   :com.gigamonkeys.pathnames))
+  (:com.gigamonkeys.json
+   :com.gigamonkeys.macro-utilities
+   :com.gigamonkeys.pathnames
+   :com.gigamonkeys.utilities))

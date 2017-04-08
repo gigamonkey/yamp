@@ -18,22 +18,37 @@
   (let* ((productions (mapcar #'normalize-production body))
          (names (mapcar #'caar productions)))
     (multiple-value-bind (args state-vars) (extract-state-variables arglist)
-      (with-gensyms (txt pos)
-        `(defun ,name (,txt ,pos ,@args)
+      (let ((just-names (append args (mapcar #'just-name state-vars))))
+        (with-gensyms (txt pos)
+          `(defun ,name (,txt ,pos ,@args)
+             (let (,@state-vars)
+               (labels ((show-state (&optional label)
+                          (tracemsg "~a: ~@{~(~a~): ~a~^; ~}" (or label "STATE") ,@(loop for n in just-names collect `(quote ,n) collect n)))
+                        ,@(mapcar
+                           #'(lambda (p) (compile-production p names))
+                           productions))
+                 (,(first names) ,txt ,pos)))))))))
 
-           (let (,@state-vars)
-             (labels (,@(loop for p in productions collect
-                           (with-gensyms (txt pos)
-                             (destructuring-bind ((name &rest args) &rest body) p
-                               `(,name (,@args ,txt ,pos)
-                                       ,(compile-progn body txt pos names (gensym "R")))))))
-               (,(first names) ,txt ,pos))))))))
+(defun compile-production (p names)
+  (with-gensyms (txt pos)
+    (destructuring-bind ((name &rest args) &rest body) p
+      `(,name (,@args ,txt ,pos)
+              ,(compile-progn body txt pos names (gensym "R"))))))
+
+(defun just-name (x)
+  (typecase x
+    (symbol x)
+    (cons (first x))))
 
 (defun extract-state-variables (args)
   (let ((state (member `&state args)))
     (if state
         (values (ldiff args state) (cdr state))
         (values args nil))))
+
+(defun save-state (names)
+  (mapcar #'(lambda (x) `(,x ,(gensym (symbol-name x)))) names))
+
 
 (defun normalize-production (p)
   (destructuring-bind (x &rest body) p
@@ -239,19 +254,18 @@ acceptable number of times to match."
 
 (defparserfun not-followed-by (p text position)
   "Match only if not followed by P."
-  (values (not (funcall p text position)) text position))
+  (values (not (funcall p text position)) nil position))
 
 (defparserfun optional (p text position)
-  "Match P if we can. Doesn't return anything. Only fails if P
-consumes input before failing."
+  "Match P if we can."
   (multiple-value-bind (ok r pos) (funcall p text position)
-    (declare (ignore r))
-    (values (or ok (= pos position)) nil pos)))
+    (declare (ignore ok))
+    (values t r pos)))
 
 (defparserfun counted (n p text position)
   "Match P N times."
   (if (zerop n)
-      (good text position)
+      (good t position)
       (multiple-value-bind (ok r pos) (funcall p text position)
         (declare (ignore r))
         (if ok
@@ -265,7 +279,7 @@ consumes input before failing."
         (good nil position)
         (bad position))))
 
-(defparserfun eod (text position)
+(defparserfun eof (text position)
   (if (<= (length text) position)
       (good t position)
       (bad position)))
@@ -281,3 +295,62 @@ consumes input before failing."
     (if ok
         (good (subseq text position pos) pos)
         (bad position))))
+
+(defparserfun ! (p text position)
+  (multiple-value-bind (ok r pos) (funcall p text position)
+    (declare (ignore r pos))
+    (if ok
+        (values nil nil position)
+        (values t (char text position) (1+ position)))))
+
+(defparserfun none-of (p text position)
+  "P really should match a single character."
+  (multiple-value-bind (ok r pos) (funcall p text position)
+    (declare (ignore r pos))
+    (if ok
+        (values nil nil position)
+        (values t (char text position) (1+ position)))))
+
+(defparserfun char-if (pred text position)
+  (let ((c (char text position)))
+    (if (funcall pred c)
+        (good c (1+ position))
+        (bad position))))
+
+(defparserfun ensure (p1 p2 text position)
+  (multiple-value-bind (ok r pos) (funcall p1 text position)
+    (funcall p2 text position)
+    (values ok r pos)))
+
+(defvar *trace* 0)
+(defvar *trace-level* 0)
+
+(defun trace-on () (incf *trace*))
+(defun trace-off () (decf *trace*))
+
+(defparserfun tracing (p text position)
+  (trace-on)
+  (unwind-protect (funcall p text position)
+    (trace-off)))
+
+(defparserfun tracer (p name text position)
+  (let ((indent (make-string (* 2 *trace-level*) :initial-element #\Space))
+        (*trace-level* (1+ *trace-level*)))
+    (when (plusp *trace*)
+      (format t "~&~aMatching ~a at ~d ..." indent name position))
+
+    (multiple-value-bind (ok r p) (funcall p text position)
+      (when (plusp *trace*)
+        (if ok
+            (format t "~&~a~a at ~d: MATCHED: ~s" indent name position r)
+            (format t "~&~a~a at ~d: No match." indent name position)))
+
+      (values ok r p))))
+
+(defun tracemsg (fmt &rest args)
+  (when (plusp *trace*)
+    (let ((indent (make-string (* 2 *trace-level*) :initial-element #\Space)))
+      (format t "~&~a" indent)
+      (apply #'format t fmt args))))
+
+(defun value (x) x)

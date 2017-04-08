@@ -1,0 +1,9 @@
+  This is a blockquote
+
+     this is some verbatim stuff
+       indented some more
+     and back out
+
+  Still part of blockquote.
+
+Top level paragraph.

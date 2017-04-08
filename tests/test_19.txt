@@ -1,0 +1,12 @@
+This is a regular paragraph.
+
+[This] is a paragraph that starts with a link. And here [is a
+link] that crosses a line. This [link is not defined]. And here is
+a [link with \i{formatting} in it]
+
+[This] <is a link definition>
+
+[is a link] <http://www.example.com/>
+
+[link with formatting in it] <http://more/>
+

@@ -1,0 +1,21 @@
+And this is a paragraph.\note{This is a note.
+
+That has its own paragraphs.
+
+   This is a verbatim section.
+
+   This is some more verbatim foo.
+
+} And this is the rest of the outer
+paragraph.
+
+And this is a paragraph.\note{This is a note.
+
+That has its own paragraphs.
+
+   This is a verbatim section.
+
+   This is some more verbatim foo.
+
+} And this is the rest of the outer paragraph.
+

@@ -1,0 +1,9 @@
+["body",
+ ["p","Testing a definition list"],
+ ["dl",
+  ["dt",["i", "Term"]," 1"],
+  ["dd",["p","Definition 1"]],
+  ["dt",["b", "Term number two"]],
+  ["dd",
+   ["p","Definition 2"]]],
+ ["p","New paragraph."]]

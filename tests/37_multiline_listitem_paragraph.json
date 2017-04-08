@@ -1,0 +1,7 @@
+["body",
+ ["p", "A paragraph"],
+ ["ol",
+  ["li",
+   ["p", "This is the first item. This is part of the same paragraph."],
+   ["p", "This is still part of the first item."]]],
+ ["p", "A new paragraph."]]

@@ -1,0 +1,11 @@
+["body",
+ ["ol",
+  ["li",
+   ["p","This is a list item"],
+   ["ol",
+    ["li",
+     ["p","This is a nested list item"]],
+    ["li",
+     ["p","This is a second nested list item"]]]],
+  ["li",
+   ["p","This is the second item of the outer list"]]]]

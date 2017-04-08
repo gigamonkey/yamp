@@ -4,225 +4,347 @@
 
 (in-package :com.gigamonkeys.yamp)
 
-(defun parse-file ())
+(defparser markup (subdocs &state (current 0) (so-far 0) (subdoc-level 0))
 
-(defun parse-text ())
+  (document
+   (optional modeline)
+   (many (try eol))
+   (-> (many element) paragraphs)
+   eod
+   `(:body ,@paragraphs))
 
-(defparser document ()
-  (optional modeline)
-  (many (try eol))
-  (-> (many element) paragraphs)
-  eod
-  `(:document ,@paragraphs))
+  (element
+   indentation
+   (or header
+       ;;section
+       verbatim
+       ordered-list
+       unordered-list
+       ;;dlist
+       blockquote
+       (try linkdef)
+       ;;section-divider
+       paragraph))
 
-(defparser element ()
-  indentation
-  (-> (or header
-          section
-          verbatim
-          ordered-list
-          unordeded-list
-          definition-list
-          blockquote
-          (try linkdef)
-          section-divider
-          paragraph)))
+  (header
+   (-> (many1 "*") stars)
+   whitespace
+   (-> paragraph-text txt)
+   `(,(keywordize (format nil "H~d" (length stars))) ,@txt))
 
-(defparser header ()
-  (-> header-marker level)
-  (-> paragraph-text text)
-  `(:header ,level ,text))
+  (section
+   "## " (-> name name) (many1 (try eol))
+   (-> (many section-body) paragraphs)
+   "##." blank
+   `(:section ,name ,@paragraphs))
 
-(defparser header-marker ()
-  (-> (many1 "*") stars)
-  whitespace
-  (length stars))
+  (section-body
+   (not-followed-by "##.")
+   element)
 
-(defparser section ()
-  "## " (-> name name) (many1 (try eol))
-  (-> (many section-body) paragraphs)
-  "##." blank
-  `(:section ,name ,@paragraphs))
+  (verbatim
+   (-> (indented 3 verbatim-text) txt)
+   `(:pre ,txt))
 
-(defparser verbatim ()
-  (indented 3 (-> verbatim-text text))
-  `(:verbatim ,text)
+  (verbatim-text
+   (-> (many1 (or (tracer verbatim-blank-line 'verbatim-blank-line)
+                  (tracer verbatim-line 'verbatim-line))) lines)
+   (format nil "~{~&~a~}" (drop-trailing-blanks lines)))
 
-(defparser verbatim-text ()
-  (-> (many1 (or verbatim-blank-line verbatim-line)) lines)
-  (format nil "~{~&~a~}" (drop-trailing-blanks lines)))
+  (verbatim-blank-line (try eol))
 
-(defparser verbatim-blank-line () (try eol) #\Newline)
+  (verbatim-line
+   (tracer indentation 'indentation-in-verbatim-line)
+   (-> (text (many1 (progn (not-followed-by eol) any-char))) txt)
+   (or eol (try eod))
+   txt)
 
-(defparser verbatim-line ()
-  indentation
-  (-> (many1 (p (not-followed-by eol) any-char)) text)
-  (or eol (try eod))
-  (apply #'concatenate 'string text))
+  (ordered-list
+   (show-state)
+   (tracer (try (listy :ol "#")) 'listy))
 
-(defparser ordered-list () (listy :ol "#"))
+  (unordered-list (show-state) (listy :ul "-"))
 
-(defparser unordered-list () (listy :ul "-"))
+  (dlist
+   (-> (indented 2 (progn (look-ahead term) (many1 (or term definition)))) ds)
+   `(:dl ,@ds))
 
-(defparser definition-list ()
-  (-> (indented 2
-                (-> (p (look-ahead term) (-> (many1 (or term definition)) ds)) ds)) ds)
-  `(:dl ,@ds))
+  (term
+   (try (progn indentation "% "))
+   (-> (many1 (or (text-until (tagged-or " %")) tagged-text)) term)
+   " %"
+   eol
+   `(:term ,term))
 
-(defparser term ()
-  (try (p indentation "% "))
-  (-> (many1 (text-until (or (tagged-or " %") tagged-text))) term)
-  " %"
-  eol
-  `(:term ,term))
+  (definition
+   (-> (many1 definition-paragraph) paragraphs)
+   `(:definition ,@paragraphs))
 
-(defparser definition ()
-  (-> (many1 definition-paragraph) paragraphs)
-  `(:definition ,@paragraphs))
+  (definition-paragraph
+   (try (progn indentation (not-followed-by "% ")))
+   paragraph)
 
-(defparser definition-paragraph ()
-  (try (p indentation (not-followed-by "% ")))
-  (-> paragraph))
+  (blockquote
+   (-> (indented 2 (many1 blockquote-element)) es)
+   `(:blockquote ,@es))
 
-(defparser blockquote ()
-  (indented 2)
-  (-> (many1 blockquote-element) es)
-  `(:blockquote ,@es))
+  (blockquote-element
+   (try (not-followed-by (progn (counted 3 " ") (none-of " "))))
+   element)
 
-(defparser blockquote-element ()
-  (try (not-followed-by (p (count 3 " ") (none-of " "))))
-  (-> element))
+  (linkdef
+   (-> (between "[" "]" (text-until "]")) name) " "
+   (-> (between "<" ">" (text-until ">")) link) blank
+   `(:link_def (:link ,name) (:url ,link)))
 
-(defparser linkdef ()
-  (-> (between "[" "]" (chars-until "]")) name) " "
-  (-> (between "<" ">" (many (none-of ">"))) link) blank
-  `(:link ,name ,link))
+  (section-divider whitespace "§" blank `(:section-divider))
 
-(defparser section-divider ()
-  whitespace "§" blank `(:section-divider))
+  (paragraph
+   (-> paragraph-text txt)
+   `(:p ,@txt))
 
-(defparser paragraph ()
-  (-> paragraph-text text)
-  `(:paragraph ,text))
+  (modeline
+   (try "-*-")
+   (many (progn (not-followed-by blank) any-char))
+   blank
+   nil)
 
-(defparser modeline ()
-  (try "-*-")
-  (many (p (not-followed-by blank) any-char))
-  blank)
+  (paragraph-text
+   (-> (many1 (or (text-until (tagged-or (or "[" blank))) tagged-text linkref)) txt)
+   blank
+   txt)
 
-(defparser paragraph-text ()
-  (-> (many1 (or (text-until (or (tagged-or "[") blank)) tagged-text linkref)) text)
-  blank
-  text)
+  (linkref
+   "["
+   (-> link-contents contents)
+   (-> (optional link-key) key)
+   "]"
+   `(:link ,@contents ,@(if key (list `(:key ,key)))))
 
-(defparser linkref ()
-  "["
-  (-> link-contents contents)
-  (-> (option-maybe link-key) maybe-key)
-  "]"
-  `(:link ,contents ,maybe-key))
+  (link-contents
+   (many1 (or (text-until (tagged-or (or "|" "]"))) tagged-text)))
 
-(defparser link-contents ()
-  (-> (many1 (text-until (or (tagged-or (one-of "|]")) tagged-text)))))
+  (link-key
+   "|" (text (many1 (none-of "]"))))
 
-(defparser link-key ()
-  "|" (-> (many1 (none-of "]")) r) r)
+  (escaped-char
+   (try (progn "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<))))
 
-(defparser escaped-char ()
-  (try (p "\\" (one-of "\\{}*#-[]%|<"))))
+  (newline
+   (not-followed-by blank)
+   newline-char
+   indentation
+   (value #\Space))
 
-(defparser newline-char ()
-  (not-followed-by blank)
-  newline
-  indentation
-  #\Newline)
+  (plain-char
+   (in-subdoc (! "}") any-char))
 
-(defparser plain-char ()
-  (-> (in-subdoc (none-of "}") any-char) c)
-  c)
+  (tag-open
+   (not-followed-by escaped-char) "\\"
+   (-> name n)
+   "{"
+   (keywordize n))
 
-(defparser tag-open ()
-  (not-followed-by escaped-char) "\\"
-  (-> name name)
-  "{"
-  name)
+  (tagged-text
+   (-> tag-open n)
+   (-> (if (member n subdocs) subdoc-contents simple-contents) contents)
+   "}"
+   `(,n ,@contents))
 
-(defparser tagged-text ()
-  (-> tag-open name)
-  (-> (if (member name (state subdocs))
-          (subdoc-contents name)
-          (simple-contents name))
-      element)
-  "}"
-  element)
+  (subdoc-contents
+   (incf subdoc-level)
+   (-> (many1 element) elements)
+   eod
+   (decf subdoc-level)
+   elements)
 
-(defparser subdoc-contents (name)
-  (with-state ((subdoc-level (+ 1 subdoc-level)))
-    (-> (many1 element) elements)
-    eod
-    `(,name ,@elements)))
+  (simple-contents
+   (many1 (or (text-until (tagged-or "}")) tagged-text)))
 
-(defparser simple-contents (name)
-  (-> (many1 (text-until (or (tagged-or "}") tagged-text))) contents)
-  `(,name ,@contents))
+  ((tagged-or p) (or tag-open (match p)))
 
-(defparser tagged-or (p) (or tag-open p) nil)
+  (name (text (many1 (char-if #'alpha-char-p))))
 
-(defparser name () (many1 letter))
+  ((listy name marker)
+   (-> (indented 2 (many1
+                    (progn
+                      (tracer (try indentation) 'try-indentation)
+                      (tracer (list-element marker) 'list-element)))) contents)
+   `(,name ,@contents))
 
-(defparser listy (name marker)
-  (->
-   (indented 2 (-> (many1 (try (p indentation (-> (list-element marker))))) c))
-   contents)
-  `(,name ,@contents))
+  ((list-element marker)
+   (ensure
+    (progn
+      (show-state "Start list-element")
+      (extra-indentation 2)
+      (show-state "After extra-indentation")
+      (tracer (try (progn (match marker) " ")) 'list-marker)
+      (-> (many1 (progn indentation (or ordered-list unordered-list paragraph))) contents)
+      `(:li ,@contents))
+    (progn
+      (show-state "End list-element")
+      (dedent 2))))
 
-(defparser list-element (marker)
-  (try (p (char marker) " "))
-  (with-state ((current (+ current 2)))
-    (-> (many1 (p indentation (-> (or ordered-list unordered-list paragraph)))) contents)
-    `(:li ,@contents)))
+  ;; Whitespace and indentation handling
 
-;;; Whitespace and indentation handling
+  (whitespace (many (or #\Space #\Tab)))
 
-(defparser whitespace () (many (one-of " \t")))
+  ((indent n) (incf current n))
 
-(defparser eol () whitespace newline)
+  ((dedent n)
+   (decf current n)
+   (setf so-far 0)) ;; FIXME: this is a hack. Need a systematic way to
+  ;; reset state when productions fail.
 
-(defparser eod () (in-subdoc end-of-subdoc eof))
+  ((extra-indentation n)
+   (incf current n)
+   (incf so-far n))
 
-(defparser end-of-subdoc () (look-ahead "}"))
+  (eol whitespace newline-char)
 
-(defparser blank ()
-  (or eol eod)
-  (or (many1 (try eol)) eod))
+  (eod (in-subdoc end-of-subdoc eof))
 
-(defparser indentation ()
-  ;; I'm confused why this is a TRY. -Peter
-  (try (count (- (state current) (state so-far)) " "))
-  (setf (state so-far) (state current)))
+  (end-of-subdoc (look-ahead "}"))
 
-(defparser indented (n p)
-  (with-state ((current (+ current n)))
-    (try (look-ahead (count n " ")))
-    (-> p)))
+  (blank
+   (or eol eod)
+   (or (many1 (try eol)) eod))
 
-(defparser newline ()
-  (setf (state so-far) 0)
-  #\Newline)
+  (indentation
+   (show-state "Beginning of indentation")
+   (tracer
+    (try
+     (tracer
+      (counted (- current so-far) " ")
+      'counted))
+     'try)
+   (setf so-far current)
+   (show-state "End of indentation")
+   t)
 
-;;; Combinators
+  ((indented n p)
+   (ensure ;; Build this into the compiler so we don't have to wrap
+           ;; the cleanup clause in a lambda
+    (progn
+      (incf current n)
+      (try (look-ahead (counted n " ")))
+      (match p))
+    (lambda (txt pos) (declare (ignore txt pos)) (decf current n))))
 
-(defparser text-until (p) (chars-until p))
+  (newline-char
+   (setf so-far 0)
+   #\Newline)
 
-(defparser chars-until (p)
-  (many1 (p (not-followed-by p) (-> (or escaped-char newline-char plain-char)))))
+  ((text-until p)
+   (-> (many1 (progn (not-followed-by p) (or escaped-char newline plain-char))) chars)
+   (mush-text chars))
 
-(defparser in-subdoc (p1 p2)
-  (if (> (state subdoc-level) 0) p1 p2))
+  ((in-subdoc p1 p2)
+   (if (> subdoc-level 0) (match p1) (match p2)))
 
-;;; Standard combinators
+  ((between start end p)
+   (match start)
+   (-> (match p) r)
+   (match end)
+   r))
+
+(defun mush-text (chars) (format nil "~{~a~}" chars))
 
 
+#+(or)(defparser markup (&state (current 0) (so-far 0) (subdoc-level 0))
+
+  (document
+   (-> (optional modeline) m)
+   (many (try eol))
+   (-> (many element) paragraphs)
+   eod
+   `(:document (:modeline ,m) ,@paragraphs))
+
+  (modeline
+   (-> (text
+        (progn
+          (try "-*-")
+          (many (progn (not-followed-by eol) any-char))))
+       ml)
+   `(:modeline ,ml))
+
+  (element
+   indentation
+   (or header paragraph))
+
+  (header
+   (-> (many1 "*") stars)
+   whitespace
+   (-> paragraph-text txt)
+   `(,(keywordize (format nil "H~d" (length stars))) ,txt))
+
+  (paragraph
+   (-> paragraph-text txt)
+   `(:paragraph ,txt))
+
+  (paragraph-text
+   (-> (many1 (or (text-until (tagged-or (or "[" blank))) tagged-text linkref)) txt)
+   blank
+   txt)
+
+  (tag-open
+   (not-followed-by escaped-char) "\\"
+   (-> name n)
+   "{"
+   n)
+
+  (name (text (many1 (char-if #'alpha-char-p))))
+
+  (tagged-text
+   (-> tag-open n)
+   (-> (text-until "}") element)
+   "}"
+   `(,(keywordize n) ,element))
+
+  ((tagged-or p) (or tag-open (match p)) nil)
+
+  (linkref
+   "[" (-> (text-until "]") contents) "]"
+   `(:link ,contents))
+
+  (indentation
+   (try (counted (- current so-far) " "))
+   (setf so-far current))
+
+  (eol whitespace #\Newline)
+
+  (eod (in-subdoc end-of-subdoc eof))
+
+  (end-of-subdoc (look-ahead "}"))
+
+  (blank
+   (or eol eod)
+   (or (many1 (try eol)) eod))
+
+  (whitespace (many (or #\Space #\Tab)))
+
+  ((in-subdoc p1 p2)
+   (if (> subdoc-level 0) (match p1) (match p2)))
+
+  ((text-until p)
+   (-> (many1 (progn (not-followed-by p) (or escaped-char newline plain-char))) chars)
+   (format nil "~{~a~}" chars))
+
+  (escaped-char
+   (try (progn "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<))))
+
+  (newline
+   (not-followed-by blank)
+   (-> newline-char nl)
+   indentation
+   nl)
+
+  (newline-char
+   (setf so-far 0)
+   #\Newline)
+
+  (plain-char any-char)
+  )
 
 ;;; Utility functions
 

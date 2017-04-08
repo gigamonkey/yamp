@@ -6,7 +6,9 @@
 
 (defpackage :com.gigamonkeys.yamp
   (:use :common-lisp
-        :com.gigamonkeys.utilities
-        :com.gigamonkeys.pathnames)
+        :com.gigamonkeys.json
+        :com.gigamonkeys.pathnames
+        :com.gigamonkeys.utilities)
   (:export :parse-file
-           :parse-text))
+           :parse-text)
+  (:shadow :!))

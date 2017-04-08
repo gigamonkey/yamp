@@ -1,0 +1,8 @@
+This is a regular paragraph.
+With a second line.
+
+  This is a block paragraph.
+
+This is a regular paragraph\note{This is a note.
+
+With it's own paragraphs.} And the end of the last regular paragraph.

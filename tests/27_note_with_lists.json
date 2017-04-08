@@ -1,0 +1,1 @@
+["body",["p","This is a regular paragraph.",["note",["p","This is an embedded note."],["ol",["li",["p","item 1"]],["li",["p","item 2"]]],["p","And bullet list."],["ul",["li",["p","item 1"]],["li",["p","item 2"]]],["p","Back to regular."]]," Here's the rest of the outer paragraph."]]

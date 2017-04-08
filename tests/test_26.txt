@@ -1,0 +1,1 @@
+This is a paragraph\note{This is an inline note.} blah blah blah.

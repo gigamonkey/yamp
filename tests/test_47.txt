@@ -1,0 +1,21 @@
+Regular paragraph.
+
+## foo
+
+A first foo paragraph.\note{This is a subdocument.
+
+## bar
+
+With it's own multiline section.
+
+##.
+
+And some more stuff.
+
+} Blah
+
+B second foo paragraph.
+
+##.
+
+Last regular paragraph.

@@ -1,0 +1,13 @@
+Regular paragraph.
+
+## foo
+
+   Verbatim section
+
+   ##.
+
+More foo
+
+##.
+
+Last regular paragraph.

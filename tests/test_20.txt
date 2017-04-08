@@ -1,0 +1,18 @@
+This is a regular paragraph.
+
+     This is a verbatim paragraph
+   with some extra space on the first line.
+
+This is another paragraph.
+
+  This is a blockquote.
+
+       This is a nested verbatim paragraph
+     with some extra space on the first line.
+
+Another regular paragraph.
+
+        abcdef
+   1234 ^
+
+Stuff.

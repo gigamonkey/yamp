@@ -1,0 +1,11 @@
+Regular paragraph.
+
+## foo
+
+A first foo paragraph.
+
+B second foo paragraph.
+
+##.
+
+Last regular paragraph.

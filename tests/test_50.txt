@@ -1,0 +1,14 @@
+Testing a definition list
+
+  % Term 1 %
+  Definition 1
+
+  % Term number two %
+  Definition 2
+
+  With another paragraph.
+
+  % Term 3 with a \% in it %
+  Definition 3
+
+New paragraph.

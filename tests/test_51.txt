@@ -1,0 +1,21 @@
+## metadata
+
+  % Title %
+  \i{What Every Programmer Should Know about Floating-Point Arithmetic}
+
+  % Subtitle %
+  \i{Or, Why 0.05 + 0.05 does not equal one dime}
+
+  % Author(s) %
+  Peter Seibel
+
+  % Title and Affiliation %
+  author of \i{Practical Common Lisp} and \i{Coders at Work}
+
+  % Preferred Mailing Address %
+  1641 Francisco Street, Berkeley, California 94703
+
+  % Email Address %
+  peter@gigamonkeys.com
+
+##.

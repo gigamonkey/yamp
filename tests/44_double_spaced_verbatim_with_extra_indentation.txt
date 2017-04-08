@@ -1,0 +1,3 @@
+    Some verbatim with extra indentation.
+
+    After a blank.

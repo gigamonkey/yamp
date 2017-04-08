@@ -1,0 +1,7 @@
+This as a [normal link] and this is a [link with a different key|foo] and a [link with a \| in it]
+
+[normal link] <http://example.com/normal_link>
+
+[foo] <http://example.com/foo>
+
+[link with a \| in it] <http://example.com/link_with_a_pipe_in_it>

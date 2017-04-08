@@ -1,0 +1,5 @@
+-*- mode: markup; -*-
+
+A paragraph with a [\b{formatted link}] in it.
+
+[formatted link] </code-challenges/>
