@@ -11,4 +11,5 @@
         :com.gigamonkeys.utilities)
   (:export :parse-file
            :parse-text)
+  (:import-from :com.gigamonkeys.macro-utilities :gensyms)
   (:shadow :!))
