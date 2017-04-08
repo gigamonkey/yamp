@@ -4,7 +4,7 @@
 
 (in-package :com.gigamonkeys.yamp)
 
-(defun run-tests (dir &key verbose quiet stop)
+(defun run-tests (dir &key (verbose t) (quiet t) (stop t))
   (loop for f in (list-directory dir)
      if (string= (pathname-type f) "txt")
      do (if (and  (not (test-file f verbose quiet)) stop) (return))))
