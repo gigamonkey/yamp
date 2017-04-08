@@ -22,7 +22,7 @@
         (ok
          (format t "~&~a => bad" txt-file)
          (when verbose
-           (format t "~& --- Got -----~&~s~&--- Expected -----~&~s~&" r json))
+           (format t "~{~&--- ~30,,,'-a~&~s~}~&~34,,,'-a" (list "Got " r "Expected " json) #\-))
          nil)
         (t
          (format t "~&~a => FAILED TO PARSE." txt-file)
