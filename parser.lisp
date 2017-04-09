@@ -84,17 +84,23 @@ the elements matches in sequence."
          (compile-progn (rest body) txt p names (gensym "R") state))))))
 
 (defun rewrite-returns (body)
-  (let (sym)
+  (let (result)
     (flet ((rewrite (x)
              (if (and (consp x) (eql (car x) '=>))
-                 (cond
-                   ((not sym)
-                    (setf sym (gensym "R"))
-                    `(-> ,(cadr x) ,sym))
-                   (t (error "Two => forms in body: ~s" body)))
+                 (if (not result)
+                     (let (sym)
+                       (cond
+                         ((cddr x)
+                          (setf sym '_)
+                          (setf result (caddr x)))
+                         (t
+                          (setf sym (gensym "R"))
+                          (setf result sym)))
+                       `(-> ,(cadr x) ,sym))
+                     (error "Two => forms in body: ~s" body))
                  x)))
       (let ((new-body (mapcar #'rewrite body)))
-        (if sym `(,@new-body ,sym) body)))))
+        (if result `(,@new-body ,result) body)))))
 
 (defun progn-wrapper (expr ok result p continuation failure state)
   (if (null continuation)

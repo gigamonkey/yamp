@@ -14,9 +14,8 @@ they should be provided via the SUBDOCS keyword arg."
   (document
    (optional modeline)
    (many (try eol))
-   (-> (many element) paragraphs)
-   eod
-   `(:body ,@paragraphs))
+   (=> (many element) `(:body ,@_))
+   eod)
 
   (element
    indentation
@@ -39,19 +38,16 @@ they should be provided via the SUBDOCS keyword arg."
 
   (section
    "## " (-> name name) (many1 (try eol))
-   (-> (many section-body) paragraphs)
-   "##." blank
-   `(,name ,@paragraphs))
+   (=> (many section-body) `(,name ,@_))
+   "##." blank)
 
   (section-body (not-followed-by "##.") element)
 
   (verbatim
-   (-> (indented 3 verbatim-text) txt)
-   `(:pre ,txt))
+   (=> (indented 3 verbatim-text) `(:pre ,_)))
 
   (verbatim-text
-   (-> (many1 (or (try eol) verbatim-line)) lines)
-   (format nil "~{~&~a~}" (drop-trailing-blanks lines)))
+   (=> (many1 (or (try eol) verbatim-line)) (combine-verbatim _)))
 
   (verbatim-line
    indentation
@@ -63,43 +59,38 @@ they should be provided via the SUBDOCS keyword arg."
   (unordered-list (listy :ul "-"))
 
   (definition-list
-   (-> (indented 2 (progn (look-ahead term) (many1 (or term definition)))) ds)
-   `(:dl ,@ds))
+   (=> (indented 2 (progn (look-ahead term) (many1 (or term definition)))) `(:dl ,@_)))
 
   (term
    (try indentation)
    "% "
-   (-> (many1 (or (text-until (tagged-or " %")) tagged-text)) term)
+   (=> (many1 (or (text-until (tagged-or " %")) tagged-text)) `(:dt ,@_))
    " %"
-   eol
-   `(:dt ,@term))
+   eol)
 
   (definition
-   (-> (many1 definition-paragraph) paragraphs)
-   `(:dd ,@paragraphs))
+   (=> (many1 definition-paragraph) `(:dd ,@_)))
 
   (definition-paragraph
    (try (progn indentation (not-followed-by "% ")))
    paragraph)
 
   (blockquote
-   (-> (indented 2 (many1 blockquote-element)) es)
-   `(:blockquote ,@es))
+   (=> (indented 2 (many1 blockquote-element)) `(:blockquote ,@_)))
 
   (blockquote-element
    (try (not-followed-by (progn (counted 3 #\Space) (none-of #\Space))))
    element)
 
   (linkdef
-   (-> (between "[" "]" (text-until "]")) name) " "
-   (-> (between "<" ">" (text-until ">")) link) blank
-   `(:link_def (:link ,name) (:url ,link)))
+   (-> (between "[" "]" (text-until "]")) name)
+   " "
+   (=> (between "<" ">" (text-until ">")) `(:link_def (:link ,name) (:url ,_)))
+   blank)
 
   (section-divider whitespace "§" blank `(:section "§"))
 
-  (paragraph
-   (-> paragraph-text txt)
-   `(:p ,@txt))
+  (paragraph (=> paragraph-text `(:p ,@_)))
 
   (modeline
    (try "-*-")
@@ -114,9 +105,8 @@ they should be provided via the SUBDOCS keyword arg."
   (linkref
    "["
    (-> link-contents contents)
-   (-> (optional link-key) key)
-   "]"
-   `(:link ,@contents ,@(if key (list `(:key ,key)))))
+   (=> (optional link-key) `(:link ,@contents ,@(if _ (list `(:key ,_)))))
+   "]")
 
   (link-contents
    (many1 (or (text-until (tagged-or (or "|" "]"))) tagged-text)))
@@ -144,9 +134,8 @@ they should be provided via the SUBDOCS keyword arg."
 
   (tagged-text
    (-> tag-open n)
-   (-> (if (member n subdocs) subdoc-contents simple-contents) contents)
-   "}"
-   `(,n ,@contents))
+   (=> (if (member n subdocs) subdoc-contents simple-contents) `(,n ,@_))
+   "}")
 
   (subdoc-contents
    (incf subdoc-level)
@@ -158,23 +147,18 @@ they should be provided via the SUBDOCS keyword arg."
 
   ((tagged-or p) (or tag-open (match p)))
 
-  (name
-   (-> (text (many1 (char-if #'alpha-char-p))) txt)
-   (keywordize txt))
+  (name (=> (text (many1 (char-if #'alpha-char-p))) (keywordize _)))
 
   ((listy name marker)
-   (-> (indented 2 (many1
-                    (progn
-                      (try indentation)
-                      (list-element marker)))) contents)
-   `(,name ,@contents))
+   (=> (indented 2 (many1 (list-element marker))) `(,name ,@_)))
 
   ((list-element marker)
-   (try (progn (match marker) " "))
+   (try indentation)
+   (try marker)
+   " "
    (extra-indentation 2)
-   (-> (many1 (progn indentation (or ordered-list unordered-list paragraph))) contents)
-   (decf current 2)
-   `(:li ,@contents))
+   (=> (many1 (progn indentation (or ordered-list unordered-list paragraph))) `(:li ,@_))
+   (decf current 2))
 
   ;; Whitespace and indentation handling
 
@@ -206,8 +190,7 @@ they should be provided via the SUBDOCS keyword arg."
    (decf current n))
 
   ((text-until p)
-   (-> (many1 (progn (not-followed-by p) (or escaped-char newline plain-char))) chars)
-   (format nil "~{~a~}" chars))
+   (=> (many1 (progn (not-followed-by p) (or escaped-char newline plain-char))) (format nil "~{~a~}" _)))
 
   ((in-subdoc p1 p2)
    (if (> subdoc-level 0) (match p1) (match p2)))
@@ -226,6 +209,9 @@ they should be provided via the SUBDOCS keyword arg."
        do (if (eql c #\Tab)
               (dotimes (i 8) (write-char #\Space out))
               (write-char c out)))))
+
+(defun combine-verbatim (lines)
+  (format nil "~{~&~a~}" (drop-trailing-blanks lines)))
 
 (defun drop-trailing-blanks (lines)
   "Drop all the trailing blank lines."
