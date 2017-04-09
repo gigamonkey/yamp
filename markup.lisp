@@ -64,7 +64,7 @@ they should be provided via the SUBDOCS keyword arg."
   (term
    (try indentation)
    "% "
-   (=> (many1 (or (text-until (tagged-or " %")) tagged-text)) `(:dt ,@_))
+   (=> (many1 (or (text-until (or tag-open " %")) tagged-text)) `(:dt ,@_))
    " %"
    eol)
 
@@ -99,7 +99,7 @@ they should be provided via the SUBDOCS keyword arg."
    nil)
 
   (paragraph-text
-   (=> (many1 (or (text-until (tagged-or (or "[" blank))) tagged-text linkref)))
+   (=> (many1 (or (text-until (or tag-open "[" blank)) tagged-text linkref)))
    blank)
 
   (linkref
@@ -109,7 +109,7 @@ they should be provided via the SUBDOCS keyword arg."
    "]")
 
   (link-contents
-   (many1 (or (text-until (tagged-or (or "|" "]"))) tagged-text)))
+   (many1 (or (text-until (or tag-open "|" "]")) tagged-text)))
 
   (link-key
    "|" (text (many1 (none-of "]"))))
@@ -133,19 +133,17 @@ they should be provided via the SUBDOCS keyword arg."
   (tag-open (unescaped "\\") (=> name) "{")
 
   (tagged-text
-   (-> tag-open n)
-   (=> (if (member n subdocs) subdoc-contents simple-contents) `(,n ,@_))
+   (-> tag-open tag)
+   (=> (if (member tag subdocs) subdoc-contents simple-contents) `(,tag ,@_))
    "}")
 
   (subdoc-contents
    (incf subdoc-level)
-   (=> (many1 element)) eod
+   (=> (many element)) eod
    (decf subdoc-level))
 
   (simple-contents
-   (many1 (or (text-until (tagged-or "}")) tagged-text)))
-
-  ((tagged-or p) (or tag-open (match p)))
+   (many1 (or (text-until (or tag-open "}")) tagged-text)))
 
   (name (=> (text (many1 (char-if #'alpha-char-p))) (keywordize _)))
 
