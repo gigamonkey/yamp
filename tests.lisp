@@ -13,7 +13,7 @@
 (defun test-file (txt-file verbose quiet)
   (let* ((json-file (make-pathname :type "json" :defaults txt-file))
          (json (listify (parse-json (file-text json-file)))))
-    (multiple-value-bind (ok r) (markup (file-text txt-file) '(:note))
+    (multiple-value-bind (ok r) (markup (file-text txt-file) '(:note :comment))
       (cond
         ((and ok (equalp json r))
          (unless quiet
