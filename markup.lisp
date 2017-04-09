@@ -241,5 +241,8 @@
 
 (defun drop-trailing-blanks (lines)
   "Drop all the trailing blank lines and also the \n's on the end of the last line."
-  ;; TODO: implement
-  lines)
+  (labels ((drop (x xs)
+             (if (and (consp xs) (eql x (car xs)))
+                 (drop x (rest xs))
+                 xs)))
+    (nreverse (drop #\Newline (nreverse lines)))))
