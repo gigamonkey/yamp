@@ -19,7 +19,7 @@
   (element
    indentation
    (or header
-       ;;section
+       section
        verbatim
        ordered-list
        unordered-list
@@ -39,7 +39,7 @@
    "## " (-> name name) (many1 (try eol))
    (-> (many section-body) paragraphs)
    "##." blank
-   `(:section ,name ,@paragraphs))
+   `(,(keywordize name) ,@paragraphs))
 
   (section-body
    (not-followed-by "##.")
