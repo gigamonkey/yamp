@@ -75,12 +75,26 @@
   "Compile the forms in an PROGN so that the PROGN matches if each of
 the elements matches in sequence."
   (unless (null body)
-    (with-gensyms (p)
-      (compile-wrapped-form
-       #'progn-wrapper
-       (first body)
-       txt pos p names result state
-       (compile-progn (rest body) txt p names (gensym "R") state)))))
+    (let ((body (rewrite-returns body)))
+      (with-gensyms (p)
+        (compile-wrapped-form
+         #'progn-wrapper
+         (first body)
+         txt pos p names result state
+         (compile-progn (rest body) txt p names (gensym "R") state))))))
+
+(defun rewrite-returns (body)
+  (let (sym)
+    (flet ((rewrite (x)
+             (if (and (consp x) (eql (car x) '=>))
+                 (cond
+                   ((not sym)
+                    (setf sym (gensym "R"))
+                    `(-> ,(cadr x) ,sym))
+                   (t (error "Two => forms in body: ~s" body)))
+                 x)))
+      (let ((new-body (mapcar #'rewrite body)))
+        (if sym `(,@new-body ,sym) body)))))
 
 (defun progn-wrapper (expr ok result p continuation failure state)
   (if (null continuation)

@@ -55,9 +55,8 @@ they should be provided via the SUBDOCS keyword arg."
 
   (verbatim-line
    indentation
-   (-> (text (many1 (progn (not-followed-by eol) any-char))) txt)
-   (or eol (try eod))
-   txt)
+   (=> (text (many1 (progn (not-followed-by eol) any-char))))
+   (or eol (try eod)))
 
   (ordered-list (listy :ol "#"))
 
@@ -109,9 +108,8 @@ they should be provided via the SUBDOCS keyword arg."
    nil)
 
   (paragraph-text
-   (-> (many1 (or (text-until (tagged-or (or "[" blank))) tagged-text linkref)) txt)
-   blank
-   txt)
+   (=> (many1 (or (text-until (tagged-or (or "[" blank))) tagged-text linkref)))
+   blank)
 
   (linkref
    "["
@@ -129,6 +127,9 @@ they should be provided via the SUBDOCS keyword arg."
   (escaped-char
    (try (progn "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<))))
 
+  ((unescaped p)
+   (not-followed-by escaped-char) (match p))
+
   (newline
    (not-followed-by blank)
    newline-char
@@ -139,11 +140,7 @@ they should be provided via the SUBDOCS keyword arg."
 
   (plain-char (in-subdoc (! "}") any-char))
 
-  (tag-open
-   (not-followed-by escaped-char) "\\"
-   (-> name n)
-   "{"
-   n)
+  (tag-open (unescaped "\\") (=> name) "{")
 
   (tagged-text
    (-> tag-open n)
@@ -153,9 +150,8 @@ they should be provided via the SUBDOCS keyword arg."
 
   (subdoc-contents
    (incf subdoc-level)
-   (-> (many1 element) elements) eod
-   (decf subdoc-level)
-   elements)
+   (=> (many1 element)) eod
+   (decf subdoc-level))
 
   (simple-contents
    (many1 (or (text-until (tagged-or "}")) tagged-text)))
@@ -206,9 +202,8 @@ they should be provided via the SUBDOCS keyword arg."
   ((indented n p)
    (try (look-ahead (counted n #\Space)))
    (incf current n)
-   (-> (match p) r)
-   (decf current n)
-   r)
+   (=> (match p))
+   (decf current n))
 
   ((text-until p)
    (-> (many1 (progn (not-followed-by p) (or escaped-char newline plain-char))) chars)
@@ -219,9 +214,8 @@ they should be provided via the SUBDOCS keyword arg."
 
   ((between start end p)
    (match start)
-   (-> (match p) r)
-   (match end)
-   r))
+   (=> (match p))
+   (match end)))
 
 ;;; Utility functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
