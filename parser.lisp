@@ -27,7 +27,10 @@
           `(defun ,name (,txt ,pos ,@args)
              (let (,@state-vars)
                (labels ((show-state (&optional label)
-                          (tracemsg "~a: ~@{~(~a~): ~a~^; ~}" (or label "STATE") ,@(loop for n in state collect `(quote ,n) collect n) "pos" ,pos))
+                          (tracemsg "~a: ~@{~(~a~): ~a~^; ~}"
+                                    (or label "STATE")
+                                    ,@(loop for n in state collect `(quote ,n) collect n)
+                                    "pos" ,pos))
                         ,@(mapcar
                            #'(lambda (p) (compile-production p names state))
                            productions))
@@ -37,6 +40,7 @@
   (with-gensyms (txt pos)
     (destructuring-bind ((name &rest args) &rest body) p
       `(,name (,@args ,txt ,pos)
+              (declare (ignorable ,txt))
               ,(compile-progn body txt pos names (gensym "R") state)))))
 
 (defun just-name (x)
@@ -156,7 +160,9 @@ elements matches, returning the result from the first match."
     (labels ((thunk (exp)
                (if (and (consp exp) (grammar-p (car exp) names) (= (length exp) 3))
                    `(function ,(car exp))
-                   `(lambda (,text ,position) ,exp))))
+                   `(lambda (,text ,position)
+                      (declare (ignorable ,text))
+                      ,exp))))
       (cond
         ((parser-function-invocation-p exp names)
          (thunk (compile-parser-call exp names text position state)))
