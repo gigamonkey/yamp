@@ -4,6 +4,10 @@
 
 (in-package :com.gigamonkeys.yamp)
 
+
+;;; XXX - can implement backtracking state by compiling in
+;;; save/restore of state that happens whenever a parse fails.
+
 (defmacro defparser (name (&rest args) &body body)
   (compile-parser name args body))
 
@@ -18,22 +22,22 @@
   (let* ((productions (mapcar #'normalize-production body))
          (names (mapcar #'caar productions)))
     (multiple-value-bind (args state-vars) (extract-state-variables arglist)
-      (let ((just-names (append args (mapcar #'just-name state-vars))))
+      (let ((state (append args (mapcar #'just-name state-vars))))
         (with-gensyms (txt pos)
           `(defun ,name (,txt ,pos ,@args)
              (let (,@state-vars)
                (labels ((show-state (&optional label)
-                          (tracemsg "~a: ~@{~(~a~): ~a~^; ~}" (or label "STATE") ,@(loop for n in just-names collect `(quote ,n) collect n)))
+                          (tracemsg "~a: ~@{~(~a~): ~a~^; ~}" (or label "STATE") ,@(loop for n in state collect `(quote ,n) collect n) "pos" ,pos))
                         ,@(mapcar
-                           #'(lambda (p) (compile-production p names))
+                           #'(lambda (p) (compile-production p names state))
                            productions))
                  (,(first names) ,txt ,pos)))))))))
 
-(defun compile-production (p names)
+(defun compile-production (p names state)
   (with-gensyms (txt pos)
     (destructuring-bind ((name &rest args) &rest body) p
       `(,name (,@args ,txt ,pos)
-              ,(compile-progn body txt pos names (gensym "R"))))))
+              ,(compile-progn body txt pos names (gensym "R") state)))))
 
 (defun just-name (x)
   (typecase x
@@ -46,9 +50,11 @@
         (values (ldiff args state) (cdr state))
         (values args nil))))
 
-(defun save-state (names)
-  (mapcar #'(lambda (x) `(,x ,(gensym (symbol-name x)))) names))
+(defun save-state-bindings (names)
+  (mapcar #'(lambda (x) `(,(gensym (symbol-name x)) ,x)) names))
 
+(defun restore-state (bindings)
+  (mapcar #'(lambda (x) `(setf ,@(reverse x))) bindings))
 
 (defun normalize-production (p)
   (destructuring-bind (x &rest body) p
@@ -65,7 +71,7 @@
 (defun bad (position) (values nil nil position))
 
 
-(defun compile-progn (body txt pos names result)
+(defun compile-progn (body txt pos names result state)
   "Compile the forms in an PROGN so that the PROGN matches if each of
 the elements matches in sequence."
   (unless (null body)
@@ -73,19 +79,23 @@ the elements matches in sequence."
       (compile-wrapped-form
        #'progn-wrapper
        (first body)
-       txt pos p names result
-       (compile-progn (rest body) txt p names (gensym "R"))))))
+       txt pos p names result state
+       (compile-progn (rest body) txt p names (gensym "R") state)))))
 
-(defun progn-wrapper (expr ok result p continuation failure)
+(defun progn-wrapper (expr ok result p continuation failure state)
   (if (null continuation)
       expr
-      `(multiple-value-bind (,ok ,result ,p) ,expr
-         (declare (ignorable ,result))
-         (if ,ok
-             ,(or continuation `(good ,result ,p))
-             ,failure))))
+      (let ((bindings (save-state-bindings state)))
+        `(let (,@bindings)
+           (multiple-value-bind (,ok ,result ,p) ,expr
+             (declare (ignorable ,result))
+             (if ,ok
+                 ,(or continuation `(good ,result ,p))
+                 (progn
+                   ,@(restore-state bindings)
+                   ,failure)))))))
 
-(defun compile-or (body txt pos names result)
+(defun compile-or (body txt pos names result state)
   "Compile the forms in an OR so that the OR matches if any of the
 elements matches, returning the result from the first match."
   (unless (null body)
@@ -93,34 +103,38 @@ elements matches, returning the result from the first match."
       (compile-wrapped-form
        #'or-wrapper
        (first body)
-       txt pos p names result
-       (compile-or (rest body) txt pos names (gensym "R"))))))
+       txt pos p names result state
+       (compile-or (rest body) txt pos names (gensym "R") state)))))
 
-(defun or-wrapper (expr ok result p continuation failure)
-  `(multiple-value-bind (,ok ,result ,p) ,expr
-     (if ,ok
-         (good ,result ,p)
-         ,(or continuation failure))))
+(defun or-wrapper (expr ok result p continuation failure state)
+  (let ((bindings (save-state-bindings state)))
+    `(let (,@bindings)
+       (multiple-value-bind (,ok ,result ,p) ,expr
+         (if ,ok
+             (good ,result ,p)
+             (progn
+               ,@(restore-state bindings)
+               ,(or continuation failure)))))))
 
-(defun compile-wrapped-form (wrapper form text p-in p names r continuation)
+(defun compile-wrapped-form (wrapper form text p-in p names r state continuation)
   (with-gensyms (ok)
     (let ((failure `(bad ,p-in)))
-      (labels ((wrap (expr) (funcall wrapper expr ok r p continuation failure))
-               (self (expr) (compile-wrapped-form wrapper expr text p-in p names (gensym "R") nil)))
+      (labels ((wrap (expr) (funcall wrapper expr ok r p continuation failure state))
+               (self (expr) (compile-wrapped-form wrapper expr text p-in p names (gensym "R") state nil)))
           (cond
 
             ((parser-function-invocation-p form names)
-             (wrap (compile-parser-call form names text p-in)))
+             (wrap (compile-parser-call form names text p-in state)))
 
             ((form-p '-> form)
              (destructuring-bind (expr var) (cdr form)
-               (funcall wrapper (self expr) ok var p continuation failure)))
+               (funcall wrapper (self expr) ok var p continuation failure state)))
 
             ((form-p 'progn form)
-             (wrap (compile-progn (rest form) text p-in names r)))
+             (wrap (compile-progn (rest form) text p-in names r state)))
 
             ((form-p 'or form)
-             (wrap (compile-or (rest form) text p-in names r)))
+             (wrap (compile-or (rest form) text p-in names r state)))
 
             ((form-p 'match form)
              (wrap (compile-match (cadr form) text p-in)))
@@ -137,7 +151,7 @@ elements matches, returning the result from the first match."
 
             (t (wrap `(good ,form ,p-in))))))))
 
-(defun compile-expression (exp names)
+(defun compile-expression (exp names state)
   (with-gensyms (text position)
     (labels ((thunk (exp)
                (if (and (consp exp) (grammar-p (car exp) names) (= (length exp) 3))
@@ -145,19 +159,19 @@ elements matches, returning the result from the first match."
                    `(lambda (,text ,position) ,exp))))
       (cond
         ((parser-function-invocation-p exp names)
-         (thunk (compile-parser-call exp names text position)))
+         (thunk (compile-parser-call exp names text position state)))
 
         ((form-p 'progn exp)
-         (thunk (compile-progn (rest exp) text position names (gensym "R"))))
+         (thunk (compile-progn (rest exp) text position names (gensym "R") state)))
 
         ((form-p 'or exp)
-         (thunk (compile-or (rest exp) text position names (gensym "R"))))
+         (thunk (compile-or (rest exp) text position names (gensym "R") state)))
 
         ((form-p 'if exp)
          (destructuring-bind (test then else) (cdr exp)
            `(if ,test
-                ,(compile-expression then names)
-                ,(compile-expression else names))))
+                ,(compile-expression then names state)
+                ,(compile-expression else names state))))
 
         ((stringp exp)
          (thunk (compile-string exp text position)))
@@ -191,9 +205,9 @@ elements matches, returning the result from the first match."
 (defun compile-match (parser txt p)
   `(funcall ,parser ,txt ,p))
 
-(defun compile-parser-call (exp names txt p)
+(defun compile-parser-call (exp names txt p state)
   (destructuring-bind (name &rest args) (rewrite-form exp names)
-    (flet ((comp (x) (compile-expression x names)))
+    (flet ((comp (x) (compile-expression x names state)))
       `(,name ,@(mapcar #'comp args) ,txt ,p))))
 
 (defun rewrite-form (form names)
