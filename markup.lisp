@@ -9,7 +9,7 @@
 they should be provided via the SUBDOCS keyword arg."
   (%markup (detab text) 0 subdocs))
 
-(defparser %markup (subdocs &state (current 0) (so-far 0) (subdoc-level 0))
+(defparser %markup (subdocs &state (indent 0) (so-far 0) (subdoc-level 0))
 
   (document
    (optional modeline)
@@ -156,15 +156,15 @@ they should be provided via the SUBDOCS keyword arg."
    " "
    (extra-indentation 2)
    (=> (many1 (progn indentation (or ordered-list unordered-list paragraph))) `(:li ,@_))
-   (decf current 2))
+   (decf indent 2))
 
   ;; Whitespace and indentation handling
 
   (whitespace (many (or #\Space #\Tab)))
 
   ((extra-indentation n)
-   (incf current n)
-   (setf so-far current))
+   (incf indent n)
+   (setf so-far indent))
 
   (eol whitespace newline-char)
 
@@ -177,15 +177,15 @@ they should be provided via the SUBDOCS keyword arg."
    (or (many1 (try eol)) eod))
 
   (indentation
-   (try (counted (- current so-far) #\Space))
-   (setf so-far current)
+   (try (counted (- indent so-far) #\Space))
+   (setf so-far indent)
    t)
 
   ((indented n p)
    (try (look-ahead (counted n #\Space)))
-   (incf current n)
+   (incf indent n)
    (=> (match p))
-   (decf current n))
+   (decf indent n))
 
   ((text-until p)
    (=> (many1 (progn (not-followed-by p) (or escaped-char newline plain-char))) (format nil "~{~a~}" _)))
