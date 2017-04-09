@@ -4,7 +4,9 @@
 
 (in-package :com.gigamonkeys.yamp)
 
-(defun markup (text subdocs)
+(defun markup (text &key subdocs)
+  "Parse a string containing markup. If the markup uses subdoc tags,
+they should be provided via the SUBDOCS keyword arg."
   (%markup (detab text) 0 subdocs))
 
 (defparser %markup (subdocs &state (current 0) (so-far 0) (subdoc-level 0))
@@ -23,9 +25,9 @@
        verbatim
        ordered-list
        unordered-list
-       dlist
+       definition-list
        blockquote
-       (try linkdef)
+       (try linkdef) ;; try because a line in a paragraph could start with a '['
        section-divider
        paragraph))
 
@@ -39,21 +41,17 @@
    "## " (-> name name) (many1 (try eol))
    (-> (many section-body) paragraphs)
    "##." blank
-   `(,(keywordize name) ,@paragraphs))
+   `(,name ,@paragraphs))
 
-  (section-body
-   (not-followed-by "##.")
-   element)
+  (section-body (not-followed-by "##.") element)
 
   (verbatim
    (-> (indented 3 verbatim-text) txt)
    `(:pre ,txt))
 
   (verbatim-text
-   (-> (many1 (or verbatim-blank-line verbatim-line)) lines)
+   (-> (many1 (or (try eol) verbatim-line)) lines)
    (format nil "~{~&~a~}" (drop-trailing-blanks lines)))
-
-  (verbatim-blank-line (try eol))
 
   (verbatim-line
    indentation
@@ -61,16 +59,17 @@
    (or eol (try eod))
    txt)
 
-  (ordered-list (try (listy :ol "#")))
+  (ordered-list (listy :ol "#"))
 
   (unordered-list (listy :ul "-"))
 
-  (dlist
+  (definition-list
    (-> (indented 2 (progn (look-ahead term) (many1 (or term definition)))) ds)
    `(:dl ,@ds))
 
   (term
-   (try (progn indentation "% "))
+   (try indentation)
+   "% "
    (-> (many1 (or (text-until (tagged-or " %")) tagged-text)) term)
    " %"
    eol
@@ -136,14 +135,15 @@
    indentation
    (value #\Space))
 
-  (plain-char
-   (in-subdoc (! "}") any-char))
+  (newline-char (setf so-far 0) #\Newline)
+
+  (plain-char (in-subdoc (! "}") any-char))
 
   (tag-open
    (not-followed-by escaped-char) "\\"
    (-> name n)
    "{"
-   (keywordize n))
+   n)
 
   (tagged-text
    (-> tag-open n)
@@ -153,8 +153,7 @@
 
   (subdoc-contents
    (incf subdoc-level)
-   (-> (many1 element) elements)
-   eod
+   (-> (many1 element) elements) eod
    (decf subdoc-level)
    elements)
 
@@ -163,7 +162,9 @@
 
   ((tagged-or p) (or tag-open (match p)))
 
-  (name (text (many1 (char-if #'alpha-char-p))))
+  (name
+   (-> (text (many1 (char-if #'alpha-char-p))) txt)
+   (keywordize txt))
 
   ((listy name marker)
    (-> (indented 2 (many1
@@ -174,22 +175,14 @@
 
   ((list-element marker)
    (try (progn (match marker) " "))
-   (ensure
-    (progn
-      (extra-indentation 2)
-      (-> (many1 (progn indentation (or ordered-list unordered-list paragraph))) contents)
-      `(:li ,@contents))
-    (progn
-      (dedent 2))))
+   (extra-indentation 2)
+   (-> (many1 (progn indentation (or ordered-list unordered-list paragraph))) contents)
+   (decf current 2)
+   `(:li ,@contents))
 
   ;; Whitespace and indentation handling
 
   (whitespace (many (or #\Space #\Tab)))
-
-  ((indent n) (incf current n))
-
-  ((dedent n)
-   (decf current n))
 
   ((extra-indentation n)
    (incf current n)
@@ -212,22 +205,14 @@
 
   ((indented n p)
    (try (look-ahead (counted n #\Space)))
-   (ensure ;; Build this into the compiler so we don't have to wrap
-           ;; the cleanup clause in a lambda
-    (progn
-      (incf current n)
-      (match p))
-    (lambda (txt pos)
-      (declare (ignore txt pos))
-      (decf current n))))
-
-  (newline-char
-   (setf so-far 0)
-   #\Newline)
+   (incf current n)
+   (-> (match p) r)
+   (decf current n)
+   r)
 
   ((text-until p)
    (-> (many1 (progn (not-followed-by p) (or escaped-char newline plain-char))) chars)
-   (mush-text chars))
+   (format nil "~{~a~}" chars))
 
   ((in-subdoc p1 p2)
    (if (> subdoc-level 0) (match p1) (match p2)))
@@ -238,7 +223,7 @@
    (match end)
    r))
 
-;;; Utility functions
+;;; Utility functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun detab (s)
   (with-output-to-string (out)
@@ -246,8 +231,6 @@
        do (if (eql c #\Tab)
               (dotimes (i 8) (write-char #\Space out))
               (write-char c out)))))
-
-(defun mush-text (chars) (format nil "~{~a~}" chars))
 
 (defun drop-trailing-blanks (lines)
   "Drop all the trailing blank lines and also the \n's on the end of the last line."

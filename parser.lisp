@@ -4,10 +4,6 @@
 
 (in-package :com.gigamonkeys.yamp)
 
-
-;;; XXX - can implement backtracking state by compiling in
-;;; save/restore of state that happens whenever a parse fails.
-
 (defmacro defparser (name (&rest args) &body body)
   (compile-parser name args body))
 
@@ -337,10 +333,8 @@ acceptable number of times to match."
         (good c (1+ position))
         (bad position))))
 
-(defparserfun ensure (p1 p2 text position)
-  (multiple-value-bind (ok r pos) (funcall p1 text position)
-    (funcall p2 text position)
-    (values ok r pos)))
+
+;;;; Tracing helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defvar *trace* 0)
 (defvar *trace-level* 0)
