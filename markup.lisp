@@ -4,7 +4,10 @@
 
 (in-package :com.gigamonkeys.yamp)
 
-(defparser markup (subdocs &state (current 0) (so-far 0) (subdoc-level 0))
+(defun markup (text subdocs)
+  (%markup (detab text) 0 subdocs))
+
+(defparser %markup (subdocs &state (current 0) (so-far 0) (subdoc-level 0))
 
   (document
    (optional modeline)
@@ -236,6 +239,13 @@
    r))
 
 ;;; Utility functions
+
+(defun detab (s)
+  (with-output-to-string (out)
+    (loop for c across s
+       do (if (eql c #\Tab)
+              (dotimes (i 8) (write-char #\Space out))
+              (write-char c out)))))
 
 (defun mush-text (chars) (format nil "~{~a~}" chars))
 
