@@ -26,7 +26,7 @@
        ;;dlist
        blockquote
        (try linkdef)
-       ;;section-divider
+       section-divider
        paragraph))
 
   (header
@@ -97,7 +97,7 @@
    (-> (between "<" ">" (text-until ">")) link) blank
    `(:link_def (:link ,name) (:url ,link)))
 
-  (section-divider whitespace "§" blank `(:section-divider))
+  (section-divider whitespace "§" blank `(:section "§"))
 
   (paragraph
    (-> paragraph-text txt)
