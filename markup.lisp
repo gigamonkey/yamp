@@ -220,6 +220,7 @@ they should be provided via the SUBDOCS keyword arg."
 ;;; Utility functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun detab (s)
+  "Convert tab characters to eight spaces."
   (with-output-to-string (out)
     (loop for c across s
        do (if (eql c #\Tab)
@@ -227,7 +228,7 @@ they should be provided via the SUBDOCS keyword arg."
               (write-char c out)))))
 
 (defun drop-trailing-blanks (lines)
-  "Drop all the trailing blank lines and also the \n's on the end of the last line."
+  "Drop all the trailing blank lines."
   (labels ((drop (x xs)
              (if (and (consp xs) (eql x (car xs)))
                  (drop x (rest xs))
