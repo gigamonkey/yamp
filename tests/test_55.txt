@@ -1,0 +1,13 @@
+Testing a definition list
+
+  % \i{Term} 1 %
+  Definition 1
+
+  % \b{Term number two} %
+  Definition 2
+
+  Second definition.
+
+  \% Third def starts with %
+
+New paragraph.
