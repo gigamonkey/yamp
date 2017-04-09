@@ -23,7 +23,7 @@
        verbatim
        ordered-list
        unordered-list
-       ;;dlist
+       dlist
        blockquote
        (try linkdef)
        section-divider
@@ -74,11 +74,11 @@
    (-> (many1 (or (text-until (tagged-or " %")) tagged-text)) term)
    " %"
    eol
-   `(:term ,term))
+   `(:dt ,@term))
 
   (definition
    (-> (many1 definition-paragraph) paragraphs)
-   `(:definition ,@paragraphs))
+   `(:dd ,@paragraphs))
 
   (definition-paragraph
    (try (progn indentation (not-followed-by "% ")))

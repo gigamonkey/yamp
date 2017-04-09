@@ -5,9 +5,17 @@
 (in-package :com.gigamonkeys.yamp)
 
 (defun run-tests (dir &key (verbose t) (quiet t) (stop t))
-  (loop for f in (list-directory dir)
-     if (string= (pathname-type f) "txt")
-     do (if (and  (not (test-file f verbose quiet)) stop) (return))))
+  (let ((run 0)
+        (failures 0))
+    (loop for f in (list-directory dir)
+       if (string= (pathname-type f) "txt")
+       do (let ((passed (test-file f verbose quiet)))
+            (incf run)
+            (unless passed (incf failures))
+            (if (and (not passed) stop) (return))))
+    (if (zerop failures)
+        (format t "~&All ~r tests passed!" run)
+        (format t "~&~d failures of out of ~d tests." failures run))))
 
 
 (defun test-file (txt-file verbose quiet)
