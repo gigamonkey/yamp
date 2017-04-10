@@ -103,10 +103,15 @@ they should be provided via the SUBDOCS keyword arg."
   (paragraph (=> paragraph-text `(:p ,@_)))
 
   (modeline
-   (try "-*-")
-   (many (progn (not-followed-by blank) any-char))
+   (try "-*-") (-> (many modeline-variable) vars) "-*-"
    blank
-   nil)
+   (when (assoc :subdocs vars)
+     (setf subdocs (extract-subdocs vars))))
+
+  (modeline-variable
+   whitespace
+   (-> name n) ": " (=> (text (many (! #\;))) (cons n _)) ";"
+   whitespace)
 
   (paragraph-text
    (=> (many1 (or (text-until (or tag-open "[" blank)) tagged-text linkref)))
@@ -222,3 +227,6 @@ they should be provided via the SUBDOCS keyword arg."
                  (drop x (rest xs))
                  xs)))
     (nreverse (drop #\Newline (nreverse lines)))))
+
+(defun extract-subdocs (vars)
+  (mapcar #'keywordize (split-sequence #\, (cdr (assoc :subdocs vars)))))
