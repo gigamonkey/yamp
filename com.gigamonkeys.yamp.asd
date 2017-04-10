@@ -9,6 +9,7 @@
   ((:file "packages")
    (:file "parser" :depends-on ("packages"))
    (:file "markup" :depends-on ("packages" "parser"))
+   (:file "math" :depends-on ("packages" "parser"))
    (:file "tests" :depends-on ("packages" "markup")))
   :depends-on
   (:com.gigamonkeys.json
