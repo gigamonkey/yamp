@@ -89,7 +89,7 @@ they should be provided via the SUBDOCS keyword arg."
    (=> (indented 2 (many1 blockquote-element)) `(:blockquote ,@_)))
 
   (blockquote-element
-   (try (not-followed-by (progn (counted 3 #\Space) (none-of #\Space))))
+   (try (not-followed-by (progn (counted 3 #\Space) (! #\Space))))
    element)
 
   (linkdef
@@ -127,7 +127,7 @@ they should be provided via the SUBDOCS keyword arg."
    (many1 (or (text-until (or tag-open "|" "]")) tagged-text)))
 
   (link-key
-   "|" (text (many1 (none-of "]"))))
+   "|" (text (many1 (! "]"))))
 
   (escaped-char
    (try (progn "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<))))
