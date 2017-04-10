@@ -57,6 +57,17 @@ they should be provided via the SUBDOCS keyword arg."
 
   (unordered-list (listy :ul "-"))
 
+  ((listy name marker)
+   (=> (indented 2 (many1 (list-element marker))) `(,name ,@_)))
+
+  ((list-element marker)
+   (try indentation)
+   (try marker)
+   " "
+   (extra-indentation 2)
+   (=> (many1 (progn indentation (or ordered-list unordered-list paragraph))) `(:li ,@_))
+   (decf indent 2))
+
   (definition-list
    (=> (indented 2 (progn (look-ahead term) (many1 (or term definition)))) `(:dl ,@_)))
 
@@ -146,17 +157,6 @@ they should be provided via the SUBDOCS keyword arg."
 
   (name (=> (text (many1 (char-if #'alpha-char-p))) (keywordize _)))
 
-  ((listy name marker)
-   (=> (indented 2 (many1 (list-element marker))) `(,name ,@_)))
-
-  ((list-element marker)
-   (try indentation)
-   (try marker)
-   " "
-   (extra-indentation 2)
-   (=> (many1 (progn indentation (or ordered-list unordered-list paragraph))) `(:li ,@_))
-   (decf indent 2))
-
   ;; Whitespace and indentation handling
 
   (whitespace (many (or #\Space #\Tab)))
@@ -187,7 +187,11 @@ they should be provided via the SUBDOCS keyword arg."
    (decf indent n))
 
   ((text-until p)
-   (=> (many1 (progn (not-followed-by p) (or escaped-char newline plain-char))) (format nil "~{~a~}" _)))
+   (=> (many1
+        (progn
+          (not-followed-by p)
+          (or escaped-char newline plain-char)))
+       (format nil "~{~a~}" _)))
 
   ((in-subdoc p1 p2)
    (if (> subdoc-level 0) (match p1) (match p2)))
