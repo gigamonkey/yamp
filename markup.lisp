@@ -209,6 +209,7 @@ they should be provided via the SUBDOCS keyword arg."
               (write-char c out)))))
 
 (defun combine-verbatim (lines)
+  "Combine the lines from parsing a verbatim section into a single string."
   (format nil "~{~&~a~}" (drop-trailing-blanks lines)))
 
 (defun drop-trailing-blanks (lines)
