@@ -32,9 +32,11 @@
 
   (times whitespace "*" whitespace)
 
-  (digit (or #\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9))
+  (digit (char-if #'digit-char-p))
 
-  (whitespace (many (or #\Space #\Tab #\Newline))))
+  (whitespace (many (or #\Space #\Tab #\Newline)))
+
+  (epsilon nil))
 
 (defun combine (op first rest)
   (if rest (list op first rest) first))
