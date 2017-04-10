@@ -9,8 +9,8 @@ even more streamlined than the Haskell version.
 
 See also:
 
-* https://github.com/gigamonkey/haskell-markup
+* [Haskell implementation using Parsec](https://github.com/gigamonkey/haskell-markup)
 
-* https://github.com/gigamonkey/monkeylib-markup
+* [A Ruby implementation I never used for anything](https://github.com/gigamonkey/markup)
 
-* https://github.com/gigamonkey/markup
+* [Original Common Lisp implementation](https://github.com/gigamonkey/monkeylib-markup)
