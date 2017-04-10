@@ -9,7 +9,32 @@
         :com.gigamonkeys.json
         :com.gigamonkeys.pathnames
         :com.gigamonkeys.utilities)
-  (:export :parse-file
-           :parse-text)
+  (:export
+   ;; API
+   :defparser
+   :defparserfun
+   :value
+
+   ;; Parser functions
+   :any-char
+   :try
+   :many
+   :many1
+   :not-followed-by
+   :optional
+   :counted
+   :look-ahead
+   :eof
+   :text
+   :!
+   :char-if
+   :tracing
+   :tracer
+
+   ;; Special syntactic symbols
+   :&state
+   :_
+   :->
+   :=>)
   (:import-from :com.gigamonkeys.macro-utilities :gensyms)
   (:shadow :!))
