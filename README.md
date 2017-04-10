@@ -8,7 +8,7 @@ had to implement a somewhat fancy macro to do it, the grammar here is
 even more streamlined than the Haskell version.
 
 This is the markup system I used for writing [both](http://www.gigamonkeys.com/book/)
-[my books](http://www.codersatwork.com/).
+my [books](http://www.codersatwork.com/).
 
 See also:
 
