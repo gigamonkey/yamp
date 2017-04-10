@@ -33,8 +33,7 @@ they should be provided via the SUBDOCS keyword arg."
   (header
    (-> (many1 "*") stars)
    whitespace
-   (-> paragraph-text txt)
-   `(,(keywordize (format nil "H~d" (length stars))) ,@txt))
+   (=> paragraph-text `(,(keywordize (format nil "H~d" (length stars))) ,@_)))
 
   (section
    "## " (-> name name) (many1 (try eol))
