@@ -2,7 +2,7 @@
 
 (defparser math ()
 
-  (math (-> expression e) (simplify e))
+  (math (=> expression (simplify _)))
 
   (expression
    (-> term first)
@@ -20,18 +20,19 @@
 
   (factor (or parenthesized number))
 
-  (number
-   (-> (text (many1 digit)) digits)
-   (parse-integer digits))
+  (number (=> (text (many1 digit)) (parse-integer _)))
 
-  (parenthesized
-   whitespace "(" (-> expression e) ")" whitespace e)
+  (parenthesized lparen (=> expression) rparen)
+
+  (lparen whitespace "(" whitespace)
+
+  (rparen whitespace ")" whitespace)
 
   (plus whitespace "+" whitespace)
 
   (times whitespace "*" whitespace)
 
-  (digit (or "0" "1" "2" "3" "4" "5" "6" "7" "8" "9"))
+  (digit (or #\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9))
 
   (whitespace (many (or #\Space #\Tab #\Newline))))
 
