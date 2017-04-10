@@ -5,7 +5,10 @@
 (in-package :com.gigamonkeys.yamp)
 
 (defmacro defparser (name (&rest args) &body body)
-  (compile-parser name args body))
+  `(progn
+     (eval-when (:compile-toplevel :load-toplevel :execute)
+       (setf (get ',name 'parser-function) t))
+     ,(compile-parser name args body)))
 
 (defun decompile (p)
   "Mostly for debugging. Essentially the same as macro expanding."
@@ -249,7 +252,8 @@ into cannonical list from."
 
 (defmacro defparserfun (name (&rest args) &body body)
   `(progn
-     (setf (get ',name 'parser-function) t)
+     (eval-when (:compile-toplevel :load-toplevel :execute)
+       (setf (get ',name 'parser-function) t))
      (defun ,name (,@args) ,@body)))
 
 (defparserfun any-char (text position)
