@@ -28,8 +28,11 @@
    :text
    :!
    :char-if
+
+   ;; Tracing
    :tracing
    :tracer
+   :tracemsg
 
    ;; Special syntactic symbols
    :&state
