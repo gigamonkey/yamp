@@ -52,7 +52,7 @@ the 'subdoc' file variable."
 
   (verbatim-line
    indentation
-   (=> (text (many1 (progn (! eol) any-char))))
+   (=> (text (many1 (and (! eol) any-char))))
    (or eol (try eod)))
 
   (ordered-list (listy :ol "#"))
@@ -67,11 +67,11 @@ the 'subdoc' file variable."
    (try marker)
    " "
    (extra-indentation 2)
-   (=> (many1 (progn indentation (or ordered-list unordered-list paragraph))) `(:li ,@_))
+   (=> (many1 (and indentation (or ordered-list unordered-list paragraph))) `(:li ,@_))
    (decf indent 2))
 
   (definition-list
-   (=> (indented 2 (progn (look-ahead term) (many1 (or term definition)))) `(:dl ,@_)))
+   (=> (indented 2 (and (look-ahead term) (many1 (or term definition)))) `(:dl ,@_)))
 
   (term
    (try indentation)
@@ -84,14 +84,14 @@ the 'subdoc' file variable."
    (=> (many1 definition-paragraph) `(:dd ,@_)))
 
   (definition-paragraph
-   (try (progn indentation (! "% ")))
+   (try (and indentation (! "% ")))
    paragraph)
 
   (blockquote
    (=> (indented 2 (many1 blockquote-element)) `(:blockquote ,@_)))
 
   (blockquote-element
-   (try (! (progn (counted 3 #\Space) (not-char #\Space))))
+   (try (! (and (counted 3 #\Space) (not-char #\Space))))
    element)
 
   (linkdef
@@ -132,7 +132,7 @@ the 'subdoc' file variable."
    "|" (text (many1 (not-char "]"))))
 
   (escaped-char
-   (try (progn "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<))))
+   (try (and "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<))))
 
   ((unescaped p) (! escaped-char) (match p))
 
@@ -194,7 +194,7 @@ the 'subdoc' file variable."
 
   ((text-until p)
    (=> (many1
-        (progn
+        (and
           (! p)
           (or escaped-char newline plain-char)))
        (format nil "~{~a~}" _)))

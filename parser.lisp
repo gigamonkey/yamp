@@ -75,7 +75,7 @@ LABELS binding."
     (destructuring-bind ((name &rest args) &rest body) p
       `(,name (,@args ,txt ,pos)
          (declare (ignorable ,txt))
-         ,(compile-progn body txt pos names (gensym "R") state)))))
+         ,(compile-and body txt pos names (gensym "R") state)))))
 
 (defun save-state-bindings (names)
   "Generate bindings to save the current value of the state variables."
@@ -91,24 +91,24 @@ SETF forms that will restore the saved values."
 external parser function."
   (or (member name names) (get name 'parser-function)))
 
-(defun compile-progn (body txt pos names result state)
-  "Compile the forms in an PROGN so that the PROGN matches if each of
+(defun compile-and (body txt pos names result state)
+  "Compile the forms in an AND so that the AND matches if each of
 the elements matches in sequence."
   (unless (null body)
     (let ((body (rewrite-returns body)))
       (with-gensyms (p)
         (compile-wrapped-form
-         #'progn-wrapper
+         #'and-wrapper
          (first body)
          txt pos p names result state
-         (compile-progn (rest body) txt p names (gensym "R") state))))))
+         (compile-and (rest body) txt p names (gensym "R") state))))))
 
-(defun rewrite-returns (progn-body)
-  "Rewrite the list of forms to be compiled into a PROGN so that a (=>
-...) form will have its result returned as the result of the PROGN. If
+(defun rewrite-returns (and-body)
+  "Rewrite the list of forms to be compiled into a AND so that a (=>
+...) form will have its result returned as the result of the AND. If
 the => form specifies a value expression it can refer to the value
 matched by the parser via the variable _. Otherwise the value of the
-parser is returned by the PROGN."
+parser is returned by the AND."
   (let (result)
     (labels ((return-form (x) (and (consp x) (eql (car x) '=>)))
              (rewrite (x)
@@ -116,7 +116,7 @@ parser is returned by the PROGN."
                  ((not (return-form x)) x)
 
                  (result
-                  (error "Two => forms in body: ~s" progn-body))
+                  (error "Two => forms in body: ~s" and-body))
 
                  ((cddr x)
                   (setf result (caddr x))
@@ -126,13 +126,13 @@ parser is returned by the PROGN."
                   (setf result (gensym "R"))
                   `(-> ,(cadr x) ,result)))))
 
-      (let ((new-body (mapcar #'rewrite progn-body)))
-        (if result `(,@new-body ,result) progn-body)))))
+      (let ((new-body (mapcar #'rewrite and-body)))
+        (if result `(,@new-body ,result) and-body)))))
 
-(defun progn-wrapper (expr ok result p continuation failure state)
-  "Wrap an expression to be part of a PROGN. Arranges to save the
+(defun and-wrapper (expr ok result p continuation failure state)
+  "Wrap an expression to be part of a AND. Arranges to save the
 state, evaluate the expression. If it succeeds, invoke the
-continuation of the PROGN, if there is one, or succeed, returning the
+continuation of the AND, if there is one, or succeed, returning the
 value and position returned by the expression. Otherwise fail, rolling
 back the state. "
   (if (null continuation)
@@ -173,7 +173,7 @@ state."
                ,(or continuation failure)))))))
 
 (defun compile-wrapped-form (wrapper form text p-in p names r state continuation)
-  "Used to compile forms that are part of PROGNs and ORs."
+  "Used to compile forms that are part of ANDs and ORs."
   (with-gensyms (ok)
     (let ((failure `(bad ,p-in)))
       (labels ((wrap (expr) (funcall wrapper expr ok r p continuation failure state))
@@ -183,8 +183,8 @@ state."
             ((parser-function-invocation-p form names)
              (wrap (compile-parser-call form names text p-in state)))
 
-            ((form-p 'progn form)
-             (wrap (compile-progn (rest form) text p-in names r state)))
+            ((form-p 'and form)
+             (wrap (compile-and (rest form) text p-in names r state)))
 
             ((form-p 'or form)
              (wrap (compile-or (rest form) text p-in names r state)))
@@ -222,8 +222,8 @@ state."
         ((parser-function-invocation-p exp names)
          (thunk (compile-parser-call exp names text position state)))
 
-        ((form-p 'progn exp)
-         (thunk (compile-progn (rest exp) text position names (gensym "R") state)))
+        ((form-p 'and exp)
+         (thunk (compile-and (rest exp) text position names (gensym "R") state)))
 
         ((form-p 'or exp)
          (thunk (compile-or (rest exp) text position names (gensym "R") state)))
