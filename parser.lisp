@@ -1,3 +1,5 @@
+;; -*- fill-column: 80; -*-
+
 ;;
 ;; Copyright (c) 2017, Peter Seibel. All rights reserved.
 ;;
@@ -7,12 +9,11 @@
 ;;; Public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmacro defparser (name (&rest args) &body body)
-  "Define a parser named NAME. The argument list can be used to
-specify parameters the parser function will accept in addition to text
-and position arguments. Any arguments after &state will be bound at
-the beginning of the function and can be used by productions within
-the grammar to maintain state which will backtrack when the parser
-does."
+  "Define a parser named NAME. The argument list can be used to specify
+parameters the parser function will accept in addition to text and position
+arguments. Any arguments after &state will be bound at the beginning of the
+function and can be used by productions within the grammar to maintain state
+which will backtrack when the parser does."
   `(progn
      (eval-when (:compile-toplevel :load-toplevel :execute)
        (setf (get ',name 'parser-function) t))
@@ -21,16 +22,15 @@ does."
 
 (defmacro defparserfun (name (&rest args) &body body)
   "Macro for defining hand-written functions that act as parsers. Used
-internally to define things that can't be expressed as normal
-parsers."
+internally to define things that can't be expressed as normal parsers."
   `(progn
      (eval-when (:compile-toplevel :load-toplevel :execute)
        (setf (get ',name 'parser-function) t))
      (defun ,name (,@args) ,@body)))
 
 (defun value (x)
-  "Return X as a value rather than interpreting it as a parser. Mostly
-useful for returning specific characters or strings."
+  "Return X as a value rather than interpreting it as a parser. Mostly useful
+for returning specific characters or strings."
   x)
 
 
@@ -59,8 +59,8 @@ useful for returning specific characters or strings."
   `(,(mklist (car p)) ,@(cdr p)))
 
 (defun extract-state-variables (args)
-  "Split the args from the initial state binding forms. Also normalize
-the binding forms."
+  "Split the args from the initial state binding forms. Also normalize the
+binding forms."
   (let ((state (member `&state args)))
     (if state
         (values
@@ -69,8 +69,8 @@ the binding forms."
         (values args nil))))
 
 (defun compile-production (p names state)
-  "Compile a production into a function definition appropriate for a
-LABELS binding."
+  "Compile a production into a function definition appropriate for a LABELS
+binding."
   (with-gensyms (txt pos)
     (destructuring-bind ((name &rest args) &rest body) p
       `(,name (,@args ,txt ,pos)
@@ -82,18 +82,18 @@ LABELS binding."
   (mapcar #'(lambda (x) `(,(gensym (symbol-name x)) ,x)) names))
 
 (defun restore-state (bindings)
-  "Given bindings produced by SAVE-STATE-BINDINGS, generate a list of
-SETF forms that will restore the saved values."
+  "Given bindings produced by SAVE-STATE-BINDINGS, generate a list of SETF forms
+that will restore the saved values."
   (mapcar #'(lambda (x) `(setf ,@(reverse x))) bindings))
 
 (defun grammar-p (name names)
-  "If a symbol either names a production within the grammar or an
-external parser function."
+  "If a symbol either names a production within the grammar or an external
+parser function."
   (or (member name names) (get name 'parser-function)))
 
 (defun compile-and (body txt pos names result state)
-  "Compile the forms in an AND so that the AND matches if each of
-the elements matches in sequence."
+  "Compile the forms in an AND so that the AND matches if each of the elements
+matches in sequence."
   (unless (null body)
     (let ((body (rewrite-returns body)))
       (with-gensyms (p)
@@ -104,11 +104,10 @@ the elements matches in sequence."
          (compile-and (rest body) txt p names (gensym "R") state))))))
 
 (defun rewrite-returns (and-body)
-  "Rewrite the list of forms to be compiled into a AND so that a (=>
-...) form will have its result returned as the result of the AND. If
-the => form specifies a value expression it can refer to the value
-matched by the parser via the variable _. Otherwise the value of the
-parser is returned by the AND."
+  "Rewrite the list of forms to be compiled into a AND so that a (=> ...) form
+will have its result returned as the result of the AND. If the => form specifies
+a value expression it can refer to the value matched by the parser via the
+variable _. Otherwise the value of the parser is returned by the AND."
   (let (result)
     (labels ((return-form (x) (and (consp x) (eql (car x) '=>)))
              (rewrite (x)
@@ -130,11 +129,10 @@ parser is returned by the AND."
         (if result `(,@new-body ,result) and-body)))))
 
 (defun and-wrapper (expr ok result p continuation failure state)
-  "Wrap an expression to be part of a AND. Arranges to save the
-state, evaluate the expression. If it succeeds, invoke the
-continuation of the AND, if there is one, or succeed, returning the
-value and position returned by the expression. Otherwise fail, rolling
-back the state. "
+  "Wrap an expression to be part of a AND. Arranges to save the state, evaluate
+the expression. If it succeeds, invoke the continuation of the AND, if there is
+one, or succeed, returning the value and position returned by the expression.
+Otherwise fail, rolling back the state. "
   (if (null continuation)
       expr
       (let ((state-bindings (save-state-bindings state)))
@@ -148,8 +146,8 @@ back the state. "
                    ,failure)))))))
 
 (defun compile-or (body txt pos names result state)
-  "Compile the forms in an OR so that the OR matches if any of the
-elements matches, returning the result from the first match."
+  "Compile the forms in an OR so that the OR matches if any of the elements
+matches, returning the result from the first match."
   (unless (null body)
     (with-gensyms (p)
       (compile-wrapped-form
@@ -161,8 +159,7 @@ elements matches, returning the result from the first match."
 (defun or-wrapper (expr ok result p continuation failure state)
   "Wrap an expression to be part of an OR. Arranges to save the state,
 evaluate the expression, and then either return success or invoke the
-continuation of the OR, if there is one, or fail and roll back the
-state."
+continuation of the OR, if there is one, or fail and roll back the state."
   (let ((state-bindings (save-state-bindings state)))
     `(let (,@state-bindings)
        (multiple-value-bind (,ok ,result ,p) ,expr
@@ -255,8 +252,8 @@ state."
       `(,name ,@(mapcar #'comp args) ,txt ,p))))
 
 (defun rewrite-form (form names)
-  "Rewrite bare symbols naming parser productions or parser functions
-into cannonical list from."
+  "Rewrite bare symbols naming parser productions or parser functions into
+cannonical list from."
   (cond
     ((and (symbolp form) (grammar-p form names)) (list form))
     (t form)))
@@ -303,21 +300,19 @@ into cannonical list from."
 ;;; Parser combinators ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defparserfun optional (p text position)
-  "Match P if we can, returning what P did if it succeeded or nil if
-it failed."
+  "Match P if we can, returning what P did if it succeeded or nil if it failed."
   (multiple-value-bind (ok r pos) (funcall p text position)
     (if ok (good r pos) (good nil position))))
 
 (defparserfun try (p text position)
-  "Attempt to parse using P, moving forward if it succeeds. If P fails,
-the try consumes no input."
+  "Attempt to parse using P, moving forward if it succeeds. If P fails, the try
+consumes no input."
   (multiple-value-bind (ok r np) (funcall p text position)
     (when ok (good r np))))
 
 (defparserfun many (p text position)
-  "Match P as many times as possible. Always succeeds as zero is an
-acceptable number of times to match. Returns a list of the values
-returned by P."
+  "Match P as many times as possible. Always succeeds as zero is an acceptable
+number of times to match. Returns a list of the values returned by P."
   (let ((result nil))
     (loop
        (multiple-value-bind (ok r pos) (funcall p text position)
@@ -329,8 +324,8 @@ returned by P."
             (return (good (nreverse result) position))))))))
 
 (defparserfun many1 (p text position)
-  "Match P as many times as possible but at least once. Returns a list
-of the values returned by P."
+  "Match P as many times as possible but at least once. Returns a list of the
+values returned by P."
   (multiple-value-bind (ok r pos) (funcall p text position)
     (when ok
       (multiple-value-bind (ok r2 pos) (many p text pos)
@@ -338,17 +333,17 @@ of the values returned by P."
         (good (cons r r2) pos)))))
 
 (defparserfun not-char (p text position)
-  "Succeed only if P does not match at the current position. Consumes
-and returns one character when P does not match."
+  "Succeed only if P does not match at the current position. Consumes and
+returns one character when P does not match."
   (unless (funcall p text position)
     (good (char text position) (1+ position))))
 
 (defparserfun look-ahead (p text position)
-  "Succeed iff P matches at position but does not consume any input in either case."
+  "Succeed if P matches. Does not consume any input in either case."
   (when (funcall p text position) (good nil position)))
 
 (defparserfun ! (p text position)
-  "Match only if P does not match. Does not consume any input in either case."
+  "Succeed only if P does not match. Does not consume any input in either case."
   (values (not (funcall p text position)) nil position))
 
 (defparserfun ? (p predicate text position)
