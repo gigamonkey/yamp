@@ -32,7 +32,7 @@
 
   (times whitespace "*" whitespace)
 
-  (digit (char-if #'digit-char-p))
+  (digit (? any-char #'digit-char-p))
 
   (whitespace (many (or #\Space #\Tab #\Newline)))
 

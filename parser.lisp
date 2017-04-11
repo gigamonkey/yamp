@@ -303,41 +303,14 @@ into cannonical list from."
       (good (char text position) (1+ position))
       (bad position)))
 
-(defparserfun try (p text position)
-  "Attempt to parse using P, moving forward if it succeeds. If P fails,
-backtrack."
-  (multiple-value-bind (ok r np) (funcall p text position)
-    (if ok
-        (good r np)
-        (bad position))))
+(defparserfun eof (text position)
+  "Succeed when we are at the end of the text."
+  (if (<= (length text) position)
+      (good t position)
+      (bad position)))
 
-(defparserfun many (parser text position)
-  "Match P as many times as possible. Always succeeds as zero is an
-acceptable number of times to match. Returns a list of the values
-returned by P."
-  (loop with r = nil
-     while t do
-       (multiple-value-bind (ok result new-position) (funcall parser text position)
-         (cond
-           (ok
-            (push result r)
-            (setf position new-position))
-           (t
-            (return (good (nreverse r) position)))))))
 
-(defparserfun many1 (parser text position)
-  "Match P as many times as possible but at least once. Returns a list
-of the values returned by P."
-  (multiple-value-bind (ok r p) (funcall parser text position)
-    (if ok
-        (multiple-value-bind (ok r2 p) (many parser text p)
-          (if ok
-              (good (cons r r2) p)
-              (bad position))))))
-
-(defparserfun not-followed-by (p text position)
-  "Match only if not followed by P."
-  (values (not (funcall p text position)) nil position))
+;;; Parser combinators ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defparserfun optional (p text position)
   "Match P if we can, returning what P did if it succeeded or nil if
@@ -345,6 +318,60 @@ it failed."
   (multiple-value-bind (ok r pos) (funcall p text position)
     (declare (ignore ok))
     (values t r pos)))
+
+(defparserfun try (p text position)
+  "Attempt to parse using P, moving forward if it succeeds. If P fails,
+the try consumes no input."
+  (multiple-value-bind (ok r np) (funcall p text position)
+    (if ok (good r np) (bad position))))
+
+(defparserfun many (p text position)
+  "Match P as many times as possible. Always succeeds as zero is an
+acceptable number of times to match. Returns a list of the values
+returned by P."
+  (let ((result nil))
+    (loop
+       (multiple-value-bind (ok r pos) (funcall p text position)
+         (cond
+           (ok
+            (push r result)
+            (setf position pos))
+           (t
+            (return (good (nreverse result) position))))))))
+
+(defparserfun many1 (p text position)
+  "Match P as many times as possible but at least once. Returns a list
+of the values returned by P."
+  (multiple-value-bind (ok r pos) (funcall p text position)
+    (if ok
+        (multiple-value-bind (ok r2 pos) (many p text pos)
+          (declare (ignore ok)) ; many always succeeds.
+          (good (cons r r2) pos))
+        (bad position))))
+
+(defparserfun not-char (p text position)
+  "Succeed only if P does not match at the current position. Consumes
+and returns one character when P does not match."
+  (if (funcall p text position)
+      (bad position)
+      (good (char text position) (1+ position))))
+
+(defparserfun look-ahead (p text position)
+  "Succeed iff P matches at position but does not consume any input in either case."
+  (if (funcall p text position) (good nil position) (bad position)))
+
+(defparserfun ! (p text position)
+  "Match only if P does not match. Does not consume any input in either case."
+  (values (not (funcall p text position)) nil position))
+
+(defparserfun ? (p predicate text position)
+  "Succeed if P succeeds and the result satisifes the given
+predicate."
+  (multiple-value-bind (ok r pos) (funcall p text position)
+    (if (and ok (funcall predicate r))
+        (good r pos)
+        (bad position))))
+
 
 (defparserfun counted (n p text position)
   "Match P N times. Return a list of values matched by P."
@@ -358,16 +385,6 @@ it failed."
                   (bad position)))
             (bad position)))))
 
-(defparserfun look-ahead (p text position)
-  "Succeed iff P matches at position but do not consume any input in either case."
-  (if (funcall p text position) (good nil position) (bad position)))
-
-(defparserfun eof (text position)
-  "Succeed when we are at the end of the text."
-  (if (<= (length text) position)
-      (good t position)
-      (bad position)))
-
 (defparserfun text (p text position)
   "Capture the text matched by P."
   (multiple-value-bind (ok r pos) (funcall p text position)
@@ -375,23 +392,6 @@ it failed."
     (if ok
         (good (subseq text position pos) pos)
         (bad position))))
-
-(defparserfun ! (p text position)
-  "Succeed only if P does not match at the current position. Consumes
-one character on success."
-  (if (funcall p text position)
-      (bad position)
-      (good (char text position) (1+ position))))
-
-(defparserfun char-if (predicate text position)
-  "Succeed if the current character satisifes the given predicate."
-  (if (< position (length text))
-      (let ((c (char text position)))
-        (if (funcall predicate c)
-            (good c (1+ position))
-            (bad position)))
-      (bad position)))
-
 
 ;;;; Tracing helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

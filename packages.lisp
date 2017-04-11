@@ -16,18 +16,18 @@
    :value
 
    ;; Parser functions
+   :!
+   :?
    :any-char
-   :try
+   :counted
+   :eof
+   :look-ahead
    :many
    :many1
-   :not-followed-by
+   :not-char
    :optional
-   :counted
-   :look-ahead
-   :eof
    :text
-   :!
-   :char-if
+   :try
 
    ;; Tracing
    :tracing

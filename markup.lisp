@@ -6,7 +6,9 @@
 
 (defun markup (text &key subdocs)
   "Parse a string containing markup. If the markup uses subdoc tags,
-they should be provided via the SUBDOCS keyword arg."
+they should be provided via the SUBDOCS keyword arg. Or they can be
+specified in the modeline as a comma-delimited list in the value of
+the 'subdoc' file variable."
   (%markup (detab text) 0 subdocs))
 
 (defparser %markup (subdocs &state (indent 0) (so-far 0) (subdoc-level 0))
@@ -40,7 +42,7 @@ they should be provided via the SUBDOCS keyword arg."
    (=> (many section-body) `(,name ,@_))
    "##." blank)
 
-  (section-body (not-followed-by "##.") element)
+  (section-body (! "##.") element)
 
   (verbatim
    (=> (indented 3 verbatim-text) `(:pre ,_)))
@@ -50,7 +52,7 @@ they should be provided via the SUBDOCS keyword arg."
 
   (verbatim-line
    indentation
-   (=> (text (many1 (progn (not-followed-by eol) any-char))))
+   (=> (text (many1 (progn (! eol) any-char))))
    (or eol (try eod)))
 
   (ordered-list (listy :ol "#"))
@@ -82,14 +84,14 @@ they should be provided via the SUBDOCS keyword arg."
    (=> (many1 definition-paragraph) `(:dd ,@_)))
 
   (definition-paragraph
-   (try (progn indentation (not-followed-by "% ")))
+   (try (progn indentation (! "% ")))
    paragraph)
 
   (blockquote
    (=> (indented 2 (many1 blockquote-element)) `(:blockquote ,@_)))
 
   (blockquote-element
-   (try (not-followed-by (progn (counted 3 #\Space) (! #\Space))))
+   (try (! (progn (counted 3 #\Space) (not-char #\Space))))
    element)
 
   (linkdef
@@ -110,7 +112,7 @@ they should be provided via the SUBDOCS keyword arg."
 
   (modeline-variable
    whitespace
-   (-> name n) ": " (=> (text (many (! #\;))) (cons n _)) ";"
+   (-> name n) ": " (=> (text (many (not-char #\;))) (cons n _)) ";"
    whitespace)
 
   (paragraph-text
@@ -127,23 +129,22 @@ they should be provided via the SUBDOCS keyword arg."
    (many1 (or (text-until (or tag-open "|" "]")) tagged-text)))
 
   (link-key
-   "|" (text (many1 (! "]"))))
+   "|" (text (many1 (not-char "]"))))
 
   (escaped-char
    (try (progn "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<))))
 
-  ((unescaped p)
-   (not-followed-by escaped-char) (match p))
+  ((unescaped p) (! escaped-char) (match p))
 
   (newline
-   (not-followed-by blank)
+   (! blank)
    newline-char
    indentation
    (value #\Space))
 
   (newline-char (setf so-far 0) #\Newline)
 
-  (plain-char (in-subdoc (! "}") any-char))
+  (plain-char (in-subdoc (not-char "}") any-char))
 
   (tag-open (unescaped "\\") (=> name) "{")
 
@@ -194,7 +195,7 @@ they should be provided via the SUBDOCS keyword arg."
   ((text-until p)
    (=> (many1
         (progn
-          (not-followed-by p)
+          (! p)
           (or escaped-char newline plain-char)))
        (format nil "~{~a~}" _)))
 
