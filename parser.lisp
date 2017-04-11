@@ -274,14 +274,14 @@ cannonical list from."
   (values t result position))
 
 (defun matching-string (s len text position)
-  (let* ((end (+ len position))
-         (ok (if (<= end (length text)) (string= s text :start2 position :end2 end))))
-    (when ok (good s end))))
+  (let ((end (+ position len)))
+    (when (and (<= end (length text))
+               (string= s text :start2 position :end2 end))
+      (good s end))))
 
 (defun matching-char (c text position)
-  (when (< position (length text))
-    (when (char= c (char text position))
-      (good c (1+ position)))))
+  (when (and (< position (length text)) (char= c (char text position)))
+    (good c (1+ position))))
 
 
 ;;; Parser primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -340,17 +340,19 @@ returns one character when P does not match."
 
 (defparserfun look-ahead (p text position)
   "Succeed if P matches. Does not consume any input in either case."
-  (when (funcall p text position) (good nil position)))
+  (when (funcall p text position)
+    (good nil position)))
 
 (defparserfun ! (p text position)
-  "Succeed only if P does not match. Does not consume any input in either case."
-  (values (not (funcall p text position)) nil position))
+  "Succeed if P does not match. Does not consume any input in either case."
+  (unless (funcall p text position)
+    (good nil position)))
 
 (defparserfun ? (p predicate text position)
   "Succeed if P succeeds and the result satisifes the given predicate."
   (multiple-value-bind (ok r pos) (funcall p text position)
-    (when (and ok (funcall predicate r)) (good r pos))))
-
+    (when (and ok (funcall predicate r))
+      (good r pos))))
 
 (defparserfun counted (n p text position)
   "Match P N times. Return a list of values matched by P."
@@ -362,12 +364,12 @@ returns one character when P does not match."
             (when ok2
               (good (cons r r2) pos2)))))))
 
-
 (defparserfun text (p text position)
   "Capture the text matched by P."
   (multiple-value-bind (ok r pos) (funcall p text position)
     (declare (ignore r))
-    (when ok (good (subseq text position pos) pos))))
+    (when ok
+      (good (subseq text position pos) pos))))
 
 
 ;;;; Tracing helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
