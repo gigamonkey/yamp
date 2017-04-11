@@ -9,7 +9,7 @@
 they should be provided via the SUBDOCS keyword arg. Or they can be
 specified in the modeline as a comma-delimited list in the value of
 the 'subdoc' file variable."
-  (%markup (detab text) 0 subdocs))
+  (%markup subdocs (detab text) 0))
 
 (defparser %markup (subdocs &state (indent 0) (so-far 0) (subdoc-level 0))
 
@@ -39,33 +39,24 @@ the 'subdoc' file variable."
 
   (section
    "## " (-> name name) (many1 (try eol))
-   (=> (many section-body) `(,name ,@_))
+   (=> (many (and (! "##.") element)) `(,name ,@_))
    "##." blank)
 
-  (section-body (! "##.") element)
+  (verbatim (=> (indented 3 verbatim-text) `(:pre ,_)))
 
-  (verbatim
-   (=> (indented 3 verbatim-text) `(:pre ,_)))
-
-  (verbatim-text
-   (=> (many1 (or (try eol) verbatim-line)) (combine-verbatim _)))
+  (verbatim-text (=> (many1 (or (try eol) verbatim-line)) (combine-verbatim _)))
 
   (verbatim-line
    indentation
    (=> (text (many1 (and (! eol) any-char))))
    (or eol (try eod)))
 
-  (ordered-list (listy :ol "#"))
+  (ordered-list (=> (indented 2 (many1 (list-item "#"))) `(:ol ,@_)))
 
-  (unordered-list (listy :ul "-"))
+  (unordered-list (=> (indented 2 (many1 (list-item "-"))) `(:ul ,@_)))
 
-  ((listy name marker)
-   (=> (indented 2 (many1 (list-element marker))) `(,name ,@_)))
-
-  ((list-element marker)
-   (try indentation)
-   (try marker)
-   " "
+  ((list-item marker)
+   (try (and indentation (match marker) " "))
    (extra-indentation 2)
    (=> (many1 (and indentation (or ordered-list unordered-list paragraph))) `(:li ,@_))
    (decf indent 2))
@@ -74,11 +65,9 @@ the 'subdoc' file variable."
    (=> (indented 2 (and (look-ahead term) (many1 (or term definition)))) `(:dl ,@_)))
 
   (term
-   (try indentation)
-   "% "
+   (try (and indentation "% "))
    (=> (many1 (or (text-until (or tag-open " %")) tagged-text)) `(:dt ,@_))
-   " %"
-   eol)
+   " %" eol)
 
   (definition
    (=> (many1 definition-paragraph) `(:dd ,@_)))
@@ -162,8 +151,6 @@ the 'subdoc' file variable."
    (many1 (or (text-until (or tag-open "}")) tagged-text)))
 
   (name (=> (text (many1 (char-if #'alpha-char-p))) (keywordize _)))
-
-  ;; Whitespace and indentation handling
 
   (whitespace (many (or #\Space #\Tab)))
 

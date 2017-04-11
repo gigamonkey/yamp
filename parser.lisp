@@ -44,7 +44,7 @@ useful for returning specific characters or strings."
       (let ((state (append args (mapcar #'car initial-state))))
         (with-gensyms (txt pos)
           (flet ((prod-compiler (p) (compile-production p names state)))
-            `(defun ,name (,txt ,pos ,@args)
+            `(defun ,name (,@args ,txt ,pos)
                (let (,@initial-state)
                  (labels ((show-state (&optional label)
                             (tracemsg "~a: ~@{~(~a~): ~a~^; ~}"
@@ -316,8 +316,7 @@ into cannonical list from."
   "Match P if we can, returning what P did if it succeeded or nil if
 it failed."
   (multiple-value-bind (ok r pos) (funcall p text position)
-    (declare (ignore ok))
-    (values t r pos)))
+    (if ok (good r pos) (good nil position))))
 
 (defparserfun try (p text position)
   "Attempt to parse using P, moving forward if it succeeds. If P fails,
