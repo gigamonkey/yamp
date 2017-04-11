@@ -197,6 +197,9 @@ continuation of the OR, if there is one, or fail and roll back the state."
             ((form-p 'match form)
              (wrap (compile-match (cadr form) text p-in)))
 
+            ((form-p 'trace form)
+             (compile-wrapped-form wrapper `(tracer ,(cadr form) ',(cadr form)) text p-in p names (gensym "R") state continuation))
+
             ((stringp form)
              (wrap (compile-string form text p-in)))
 
@@ -228,6 +231,9 @@ continuation of the OR, if there is one, or fail and roll back the state."
         ((form-p 'if exp)
          (destructuring-bind (test then else) (cdr exp)
            `(if ,test ,(self then) ,(self else))))
+
+        ((form-p 'trace exp)
+         (self `(tracer ,(cadr exp) ',(cadr exp))))
 
         ((stringp exp)
          (thunk (compile-string exp text position)))
