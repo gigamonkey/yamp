@@ -1,3 +1,5 @@
+;; -*- fill-column: 80; -*-
+
 ;;
 ;; Copyright (c) 2017, Peter Seibel. All rights reserved.
 ;;
@@ -6,9 +8,9 @@
 
 (defun markup (text &key subdocs)
   "Parse a string containing markup. If the markup uses subdoc tags,
-they should be provided via the SUBDOCS keyword arg. Or they can be
-specified in the modeline as a comma-delimited list in the value of
-the 'subdoc' file variable."
+they should be provided via the SUBDOCS keyword arg. Or they can be specified in
+the modeline as a comma-delimited list in the value of the 'subdoc' file
+variable."
   (%markup subdocs (detab text) 0))
 
 (defparser %markup (subdocs &state (indent 0) (so-far 0) (subdoc-level 0))
@@ -217,4 +219,5 @@ the 'subdoc' file variable."
     (nreverse (drop #\Newline (nreverse lines)))))
 
 (defun extract-subdocs (vars)
+  "Extract the list of subdoc tags from the value in the modeline."
   (mapcar #'keywordize (split-sequence #\, (cdr (assoc :subdocs vars)))))
