@@ -6,7 +6,9 @@
 
 (in-package :com.gigamonkeys.yamp)
 
+
 ;;; Public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 
 (defmacro defparser (name (&rest args) &body body)
   "Define a parser named NAME. The argument list can be used to specify
@@ -110,20 +112,18 @@ a value expression it can refer to the value matched by the parser via the
 variable _. Otherwise the value of the parser is returned by the AND."
   (let (result)
     (labels ((return-form (x) (and (consp x) (eql (car x) '=>)))
+
+             (translate (x r &optional s)
+               (setq result r)
+               `(-> ,(cadr x) ,(or s r)))
+
              (rewrite (x)
-               (cond
-                 ((not (return-form x)) x)
-
-                 (result
-                  (error "Two => forms in body: ~s" and-body))
-
-                 ((cddr x)
-                  (setf result (caddr x))
-                  `(-> ,(cadr x) _))
-
-                 (t
-                  (setf result (gensym "R"))
-                  `(-> ,(cadr x) ,result)))))
+               (if (return-form x)
+                   (cond
+                     (result (error "Two => forms in body: ~s" and-body))
+                     ((cddr x) (translate x (caddr x) '_))
+                     (t (translate x (gensym "R"))))
+                   x)))
 
       (let ((new-body (mapcar #'rewrite and-body)))
         (if result `(,@new-body ,result) and-body)))))
