@@ -175,7 +175,7 @@ state."
 (defun compile-wrapped-form (wrapper form text p-in p names r state continuation)
   "Used to compile forms that are part of ANDs and ORs."
   (with-gensyms (ok)
-    (let ((failure `(bad ,p-in)))
+    (let ((failure nil))
       (labels ((wrap (expr) (funcall wrapper expr ok r p continuation failure state))
                (self (expr) (compile-wrapped-form wrapper expr text p-in p names (gensym "R") state nil)))
           (cond
@@ -276,38 +276,28 @@ into cannonical list from."
   "Return values indicating a parser succeeded."
   (values t result position))
 
-(defun bad (position)
-  "Return values indicating a parser failed."
-  (values nil nil position))
-
 (defun matching-string (s len text position)
   (let* ((end (+ len position))
          (ok (if (<= end (length text)) (string= s text :start2 position :end2 end))))
-    (if ok
-        (good s end)
-        (bad position))))
+    (when ok (good s end))))
 
 (defun matching-char (c text position)
-  (if (< position (length text))
-      (if (char= c (char text position))
-          (good c (1+ position))
-          (bad position))
-      (bad position)))
+  (when (< position (length text))
+    (when (char= c (char text position))
+      (good c (1+ position)))))
 
 
 ;;; Parser primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defparserfun any-char (text position)
   "Match a single character. Succeeds everywhere except at the EOF."
-  (if (< position (length text))
-      (good (char text position) (1+ position))
-      (bad position)))
+  (when (< position (length text))
+    (good (char text position) (1+ position))))
 
 (defparserfun eof (text position)
   "Succeed when we are at the end of the text."
-  (if (<= (length text) position)
-      (good t position)
-      (bad position)))
+  (when (<= (length text) position)
+    (good t position)))
 
 
 ;;; Parser combinators ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -322,7 +312,7 @@ it failed."
   "Attempt to parse using P, moving forward if it succeeds. If P fails,
 the try consumes no input."
   (multiple-value-bind (ok r np) (funcall p text position)
-    (if ok (good r np) (bad position))))
+    (when ok (good r np))))
 
 (defparserfun many (p text position)
   "Match P as many times as possible. Always succeeds as zero is an
@@ -342,34 +332,29 @@ returned by P."
   "Match P as many times as possible but at least once. Returns a list
 of the values returned by P."
   (multiple-value-bind (ok r pos) (funcall p text position)
-    (if ok
-        (multiple-value-bind (ok r2 pos) (many p text pos)
-          (declare (ignore ok)) ; many always succeeds.
-          (good (cons r r2) pos))
-        (bad position))))
+    (when ok
+      (multiple-value-bind (ok r2 pos) (many p text pos)
+        (declare (ignore ok)) ; many always succeeds.
+        (good (cons r r2) pos)))))
 
 (defparserfun not-char (p text position)
   "Succeed only if P does not match at the current position. Consumes
 and returns one character when P does not match."
-  (if (funcall p text position)
-      (bad position)
-      (good (char text position) (1+ position))))
+  (unless (funcall p text position)
+    (good (char text position) (1+ position))))
 
 (defparserfun look-ahead (p text position)
   "Succeed iff P matches at position but does not consume any input in either case."
-  (if (funcall p text position) (good nil position) (bad position)))
+  (when (funcall p text position) (good nil position)))
 
 (defparserfun ! (p text position)
   "Match only if P does not match. Does not consume any input in either case."
   (values (not (funcall p text position)) nil position))
 
 (defparserfun ? (p predicate text position)
-  "Succeed if P succeeds and the result satisifes the given
-predicate."
+  "Succeed if P succeeds and the result satisifes the given predicate."
   (multiple-value-bind (ok r pos) (funcall p text position)
-    (if (and ok (funcall predicate r))
-        (good r pos)
-        (bad position))))
+    (when (and ok (funcall predicate r)) (good r pos))))
 
 
 (defparserfun counted (n p text position)
@@ -377,20 +362,18 @@ predicate."
   (if (zerop n)
       (good nil position)
       (multiple-value-bind (ok r pos) (funcall p text position)
-        (if ok
-            (multiple-value-bind (ok2 r2 pos2) (counted (1- n) p text pos)
-              (if ok2
-                  (good (cons r r2) pos2)
-                  (bad position)))
-            (bad position)))))
+        (when ok
+          (multiple-value-bind (ok2 r2 pos2) (counted (1- n) p text pos)
+            (when ok2
+              (good (cons r r2) pos2)))))))
+
 
 (defparserfun text (p text position)
   "Capture the text matched by P."
   (multiple-value-bind (ok r pos) (funcall p text position)
     (declare (ignore r))
-    (if ok
-        (good (subseq text position pos) pos)
-        (bad position))))
+    (when ok (good (subseq text position pos) pos))))
+
 
 ;;;; Tracing helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
