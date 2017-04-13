@@ -8,14 +8,17 @@
 
 (defun endnotes (doc)
   "Rewrite a doc with :note elements in it so they became endnotes."
-  (funcall
-   (>>>
-    (rewriter :note (numberer))
-    (lambda (x) `(,@x (:notes ,@(extract :note x))))
-    (rewriter :notes (rewriter :note (>>> #'endnote-backlinker #'divver)))
-    (rewriter :notes #'divver)
-    (rewriter :body (rewriter :note #'endnote-marker)))
-   doc))
+  (if (extract :note doc)
+      (funcall
+       (>>>
+        (rewriter :note (numberer))
+        (lambda (x) `(,@x (:notes ,@(extract :note x))))
+        (rewriter :notes (rewriter :note (>>> #'endnote-backlinker #'divver)))
+        (rewriter :notes #'divver)
+        (rewriter :body (rewriter :note #'endnote-marker)))
+       doc)
+      doc))
+
 
 ;;; Helper functions
 
@@ -23,7 +26,7 @@
 
 (defun rewriter (tag fn)
   "A function that given a tree finds every instance of TAG'd elements and
-replaces them with teh result of FN."
+replaces them with the result of FN."
   (labels ((walk (tree)
              (if (consp tree)
                  (mapcar #'walk (if (eql (car tree) tag) (funcall fn tree) tree))
