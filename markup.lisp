@@ -11,7 +11,9 @@
 they should be provided via the SUBDOCS keyword arg. Or they can be specified in
 the modeline as a comma-delimited list in the value of the 'subdoc' file
 variable."
-  (%markup subdocs (detab text) 0))
+  (multiple-value-bind (ok r) (%markup subdocs (detab text) 0)
+    (and ok r)))
+
 
 (defparser %markup (subdocs &state (indent 0) (so-far 0) (subdoc-level 0))
 
@@ -152,7 +154,7 @@ variable."
   (simple-contents
    (many1 (or (text-until (or tag-open "}")) tagged-text)))
 
-  (name (=> (text (many1 (char-if #'alpha-char-p))) (keywordize _)))
+  (name (=> (text (many1 (? any-char #'alpha-char-p))) (keywordize _)))
 
   (whitespace (many (or #\Space #\Tab)))
 
