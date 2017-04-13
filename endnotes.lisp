@@ -20,41 +20,7 @@
       doc))
 
 
-;;; Helper functions
-
-(defun >>> (&rest fn) (apply #'compose (reverse fn)))
-
-(defun rewriter (tag fn)
-  "A function that given a tree finds every instance of TAG'd elements and
-replaces them with the result of FN."
-  (labels ((walk (tree)
-             (if (consp tree)
-                 (mapcar #'walk (if (eql (car tree) tag) (funcall fn tree) tree))
-                 tree)))
-    #'walk))
-
-(defun numberer ()
-  "Insert an element with a number that increases each time we are called."
-  (let ((n 0))
-    #'(lambda (tree)
-        (destructuring-bind (tag &rest body) tree
-          `(,tag ,(incf n) ,@body)))))
-
-(defun divver (tree)
-  "Replace tree with a :DIV with a class attribute from the original tag."
-  `((:div :class ,(string-downcase (first tree))) ,@(rest tree)))
-
-(defun fragment (x)
-  "Make a framgment HREF value."
-  (format nil "#~a" x))
-
-(defun note-id (n)
-  "The id value for the actual footnote number N."
-  (format nil "note_~d" n))
-
-(defun marker-id (n)
-  "The id value for the marker for footnote number N."
-  (format nil "marker_~d" n))
+;;; Helper functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun endnote-marker (note)
   "Make a :NOTE element into its endnote marker, linking to the note and with an
@@ -80,9 +46,14 @@ and a link back to the marker."
        ,@e1-body)
       ,@body)))
 
-(defun extract (tag sexp)
-  "Extract all the elements with a given TAG in depth-first order."
-  (when (consp sexp)
-    (if (eql (car sexp) tag)
-        (list sexp)
-        (mapcan #'(lambda (x) (extract tag x)) sexp))))
+(defun fragment (x)
+  "Make a framgment HREF value."
+  (format nil "#~a" x))
+
+(defun note-id (n)
+  "The id value for the actual footnote number N."
+  (format nil "note_~d" n))
+
+(defun marker-id (n)
+  "The id value for the marker for footnote number N."
+  (format nil "marker_~d" n))

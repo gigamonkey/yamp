@@ -18,14 +18,6 @@
 
 ;;; Helper functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun deleter (tag)
-  (labels ((walk (tree)
-             (if (consp tree)
-                 (unless (eql (car tree) tag)
-                   (list (mapcan #'walk tree)))
-                 (list tree))))
-    (compose #'car #'walk)))
-
 (defun get-linkdefs (doc)
   "Extract the link names and urls."
   (loop with h = (make-hash-table :test 'equalp)
