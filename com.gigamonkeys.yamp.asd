@@ -7,6 +7,7 @@
   :description "Yet Another Markup Parser."
   :components
   ((:file "packages")
+   (:file "endnotes" :depends-on ("packages"))
    (:file "parser" :depends-on ("packages"))
    (:file "markup" :depends-on ("packages" "parser"))
    (:file "math" :depends-on ("packages" "parser"))
