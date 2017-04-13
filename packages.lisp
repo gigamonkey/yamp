@@ -10,6 +10,10 @@
         :com.gigamonkeys.pathnames
         :com.gigamonkeys.utilities)
   (:export
+
+   ;; Markup
+   :markup
+
    ;; API
    :defparser
    :defparserfun
