@@ -6,28 +6,28 @@
 
 (in-package :com.gigamonkeys.yamp)
 
-(defun markup-html (doc)
+(defun markup-html (doc &key title (style "style.css") script)
   (funcall
    (>>>
     #'links
     #'endnotes
+    (rewriter :img #'image)
     #'htmlize
-    #'entitle
-    (stylize "style.css"))
+    (entitle title)
+    (stylize style)
+    (enscript script))
    doc))
 
 (defun links (doc)
-  "Rewrite the doc so :link elements are expanded into :a tags with the appropriate link."
+  "Rewrite the doc so :link elements are expanded into :a tags with the
+appropriate link."
   (let ((linkdefs (get-linkdefs doc)))
     (funcall
-     (>>>
-      (rewriter :link (linker linkdefs))
-      (deleter :link_def))
+     (>>> (deleter :link_def) (rewriter :link (linker linkdefs)))
      doc)))
 
-
 (defun endnotes (doc)
-  "Rewrite a doc with :note elements in it so they became endnotes."
+  "Rewrite a doc with :note elements converted to endnotes."
   (if (extract :note doc)
       (funcall
        (>>>
@@ -39,6 +39,9 @@
        doc)
       doc))
 
+(defun image (img)
+  `(:img :src ,@(rest img)))
+
 (defun htmlize (doc)
   "Wrap the :body we get from the markup parser in a proper HTML5 document with
 a doctype and proper charset."
@@ -49,11 +52,14 @@ a doctype and proper charset."
        (:meta :charset "UTF-8"))
       ,doc)))
 
-(defun entitle (doc)
+(defun entitle (title)
   "Add a :TITLE element to :HEAD based on the contents of the first :H1"
-  (let ((h1 (first (extract :h1 doc))))
-    (when h1
-      (funcall (rewriter :head (appending `((:title ,(just-text (cdr h1)))))) doc))))
+  #'(lambda (doc)
+      (if title
+          (funcall (rewriter :head (appending `((:title ,title)))) doc)
+          (let ((h1 (first (extract :h1 doc))))
+            (when h1
+              (funcall (rewriter :head (appending `((:title ,(just-text (cdr h1)))))) doc))))))
 
 (defun stylize (style &key inline)
   "Add an :LINK or :STYLE to :HEAD for an external or inline style element."
@@ -63,6 +69,11 @@ a doctype and proper charset."
                   `((:style (:noescape ,style)))
                   `((:link :href ,style :rel "stylesheet"))))))
 
+(defun enscript (script)
+  "Add an SCRIPT tag if script is provided."
+  (if script
+      (rewriter :body (appending `((:script :src ,script :type "text/javascript"))))
+      #'identity))
 
 ;;; Helper functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -85,7 +96,7 @@ and a link back to the marker."
        ((:a
          :id ,(note-id n)
          :href ,(fragment (marker-id n))
-         :class "marker")
+         :class "backlink")
         ,n) " "
        ,@e1-body)
       ,@body)))
@@ -111,8 +122,11 @@ and a link back to the marker."
 
 (defun linker (links)
   "Rewrite a link tag into anchor."
-  #'(lambda (x)
-      `((:a :href ,(gethash (link-key x) links)) ,@(link-contents x))))
+  #'(lambda (x) `((:a :href ,(get-url (link-key x) links)) ,@(link-contents x))))
+
+(defun get-url (link h)
+  "Lookup the URLy for a link. Warn if none found."
+  (or (gethash link h) (progn (warn "No link found for ~a" link) "nowhere.html")))
 
 (defun link-key (link)
   "The key extracted from a :link, either the explicit :key value or

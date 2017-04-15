@@ -8,7 +8,9 @@
 
 (in-package :com.gigamonkeys.yamp)
 
-(defun >>> (&rest fn) (apply #'compose (reverse fn)))
+(defun >>> (&rest fn)
+  "Reverse order version of COMPOSE."
+  (apply #'compose (reverse fn)))
 
 (defun extract (tag sexp)
   "Extract all the elements with a given TAG in depth-first order."
