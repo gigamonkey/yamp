@@ -1,0 +1,27 @@
+-*- mode: markup; subdocs: note; -*-
+
+* Sample doc
+
+This is paragraph\note{This is a footnote.} And some more of the paragraph.
+
+Another paragraph\note{A second footnote. A second footnote. A second
+footnote. A second footnote. A second footnote. A second footnote. A
+second footnote. A second footnote. A second footnote. A second
+footnote. A second footnote. A second footnote. A second footnote. A
+second footnote. A second footnote. A second footnote. A second
+footnote. A second footnote.
+
+With [two|b] paragraphs in it.} And more of that [second] [paragraph].
+
+Here is another paragraph with [a] [few|b] [\i{links}] in it.
+
+This is a [complicated \i{link} with formatting|a].
+
+
+[a] <http://www.example.com/a>
+
+[b] <http://www.example.com/b>
+
+[links] <http://www.example.com/links>
+
+[second] <http://www.google.com/>

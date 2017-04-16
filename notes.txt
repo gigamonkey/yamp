@@ -1,0 +1,26 @@
+-*- mode: markup; fill-column: 80; subdocs: note; -*-
+
+* Markup
+
+- Biggest advantage of Markup is that is a purely logical markup. Like Markdown
+  it has its roots in HTML generation, but unlike Markdown it doesn’t provide
+  any particular facilities for embedding HTML directly in Markup files. While
+  this may make it a bit harder to use if all you want to do is generate HTML it
+  makes it much easier to support multiple backends—everything is expressed in
+  Markup and it is up to the backend to generate the appropriate output whether
+  it’s HTML, PDF, RTF, TeX, or something else.
+
+- Recursive decent parsers. A single function tries to parse something at a
+  given point and returns success, a value, and the new position. Functions can
+  call other functions and can also be passed to combinator functions that can
+  control the execution of the parsers they are passed.
+
+- Don’t have \code{do} notation like in Haskell.
+
+- YAMP doesn’t use non-deterministic parsing as descibed in [monadic parsing].
+
+
+
+[monadic parsing] <http://www.cs.nott.ac.uk/~pszgmh/pearl.pdf>
+
+[functional parsers] <http://roman-dushkin.narod.ru/files/fp__jeroen_fokker_001.pdf>

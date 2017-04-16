@@ -1,0 +1,12 @@
+body {
+    width: 6in;
+    margin: 5% auto;
+    font-family: "Gill sans", sans-serif;
+    font-weight: 300;
+
+}
+
+.marker {
+    font-size: 60%;
+    vertical-align: top;
+}
