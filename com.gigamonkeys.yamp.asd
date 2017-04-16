@@ -7,13 +7,16 @@
   :description "Yet Another Markup Parser."
   :components
   ((:file "packages")
-   (:file "endnotes" :depends-on ("packages"))
-   (:file "parser" :depends-on ("packages"))
+   (:file "for-emacs" :depends-on ("packages" "html"))
+   (:file "html" :depends-on ("packages" "trees"))
    (:file "markup" :depends-on ("packages" "parser"))
    (:file "math" :depends-on ("packages" "parser"))
-   (:file "tests" :depends-on ("packages" "markup")))
+   (:file "parser" :depends-on ("packages"))
+   (:file "tests" :depends-on ("packages" "markup"))
+   (:file "trees" :depends-on ("packages")))
   :depends-on
   (:com.gigamonkeys.json
    :com.gigamonkeys.macro-utilities
    :com.gigamonkeys.pathnames
-   :com.gigamonkeys.utilities))
+   :com.gigamonkeys.utilities
+   :monkeylib-html))
