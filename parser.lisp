@@ -289,17 +289,25 @@ cannonical list from."
   (when (and (< position (length text)) (char= c (char text position)))
     (good c (1+ position))))
 
+(defun end-of-text-p (text position)
+  "Are we at the end of the text"
+  (>= position (length text)))
+
+(defun getc (text position)
+  "Get the next character from TEXT at POSITION"
+  (values (char text position) (1+ position)))
 
 ;;; Parser primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defparserfun any-char (text position)
   "Match a single character. Succeeds everywhere except at the EOF."
-  (when (< position (length text))
-    (good (char text position) (1+ position))))
+  (unless (end-of-text-p text position)
+    (multiple-value-bind (c p) (getc text position)
+      (good c p))))
 
 (defparserfun eof (text position)
   "Succeed when we are at the end of the text."
-  (when (<= (length text) position)
+  (when (end-of-text-p text position)
     (good t position)))
 
 
@@ -342,7 +350,8 @@ values returned by P."
   "Succeed only if P does not match at the current position. Consumes and
 returns one character when P does not match."
   (unless (funcall p text position)
-    (good (char text position) (1+ position))))
+    (multiple-value-bind (c p) (getc text position)
+      (good c p))))
 
 (defparserfun look-ahead (p text position)
   "Succeed if P matches. Does not consume any input in either case."
