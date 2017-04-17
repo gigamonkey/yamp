@@ -11,9 +11,9 @@
 they should be provided via the SUBDOCS keyword arg. Or they can be specified in
 the modeline as a comma-delimited list in the value of the 'subdoc' file
 variable."
-  (multiple-value-bind (ok r) (%markup subdocs (detab text) 0)
-    (and ok r)))
-
+  (let ((text (detab text))) ;; This actually only currently works for string input
+    (multiple-value-bind (ok r) (%markup subdocs text (initial-position text))
+      (and ok r))))
 
 (defparser %markup (subdocs &state (indent 0) (so-far 0) (subdoc-level 0))
 
@@ -200,13 +200,17 @@ variable."
 
 ;;; Utility functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun detab (s)
+(defgeneric detab (s))
+
+(defmethod detab ((s string))
   "Convert tab characters to eight spaces."
   (with-output-to-string (out)
     (loop for c across s
        do (if (eql c #\Tab)
               (dotimes (i 8) (write-char #\Space out))
               (write-char c out)))))
+
+(defmethod detab ((s stream)) s) ;; FIXME: this obviously needs to do something
 
 (defun combine-verbatim (lines)
   "Combine the lines from parsing a verbatim section into a single string."

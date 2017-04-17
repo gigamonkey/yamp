@@ -36,6 +36,25 @@
          (format t "~&~a => FAILED TO PARSE." txt-file)
          nil)))))
 
+(defun test-file2 (txt-file verbose quiet)
+  (let* ((json-file (make-pathname :type "json" :defaults txt-file))
+         (json (listify (parse-json (file-text json-file)))))
+    (let ((r (with-open-file (txt txt-file) (markup txt :subdocs '(:note :comment)))))
+      (cond
+        ((and r (equalp json r))
+         (unless quiet
+           (format t "~&~a => ok" txt-file))
+         t)
+        (r
+         (format t "~&~a => bad" txt-file)
+         (when verbose
+           (format t "~{~&--- ~30,,,'-a~&~s~}~&~34,,,'-a" (list "Got " r "Expected " json) #\-))
+         nil)
+        (t
+         (format t "~&~a => FAILED TO PARSE." txt-file)
+         nil)))))
+
+
 
 (defun listify (x)
   (typecase x

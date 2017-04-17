@@ -279,23 +279,77 @@ cannonical list from."
   "Return values indicating a parser succeeded."
   (values t result position))
 
-(defun matching-string (s len text position)
+
+;;;;;; I/O protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defgeneric matching-string (s len text position)
+  (:documentation "Does the string S (with length LEN) match at POSITION?"))
+
+(defgeneric matching-char (c text position)
+  (:documentation "Does the char C match at POSITION?"))
+
+(defgeneric end-of-text-p (text position)
+  (:documentation "Are we at the end of the text?"))
+
+(defgeneric getc (text position)
+  (:documentation "Get the next character and the subsequent position."))
+
+(defgeneric initial-position (text)
+  (:documentation "Get the initial position."))
+
+(defgeneric gettext (text start end)
+  (:documentation "Get the text between START and END." ))
+
+;;;;;;;;; String implementation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defmethod matching-string (s len (text string) position)
   (let ((end (+ position len)))
     (when (and (<= end (length text))
                (string= s text :start2 position :end2 end))
       (good s end))))
 
-(defun matching-char (c text position)
+(defmethod matching-char (c (text string) position)
   (when (and (< position (length text)) (char= c (char text position)))
     (good c (1+ position))))
 
-(defun end-of-text-p (text position)
-  "Are we at the end of the text"
-  (>= position (length text)))
+(defmethod end-of-text-p ((text string) position) (>= position (length text)))
 
-(defun getc (text position)
-  "Get the next character from TEXT at POSITION"
-  (values (char text position) (1+ position)))
+(defmethod getc ((text string) position) (values (char text position) (1+ position)))
+
+(defmethod initial-position ((text string)) 0)
+
+(defmethod gettext ((text string) start end) (subseq text start end))
+
+;;;;;;;;; Stream implementation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defmethod matching-string (s len (text stream) position)
+  (when (file-position text position)
+    (let ((ss (make-string len)))
+      (let ((read (read-sequence ss text)))
+        (when (and (= read len) (string= ss s))
+          (good s (file-position text)))))))
+
+(defmethod matching-char (c (text stream) position)
+  (multiple-value-bind (c2 p) (getc text position)
+    (when (and c2 (char= c c2))
+      (good c p))))
+
+(defmethod end-of-text-p ((text stream) position)
+  (when (file-position text position)
+    (not (peek-char t text nil nil))))
+
+(defmethod getc ((text stream) position)
+  (when (file-position text position)
+    (let ((c (read-char text nil nil)))
+      (values c (file-position text)))))
+
+(defmethod initial-position ((text stream)) (file-position text))
+
+(defmethod gettext ((text stream) start end)
+  (when (file-position text start)
+    (with-output-to-string (s)
+      (loop until (= (file-position text) end)
+           do (write-char (read-char text) s)))))
 
 ;;; Parser primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -384,8 +438,7 @@ returns one character when P does not match."
   (multiple-value-bind (ok r pos) (funcall p text position)
     (declare (ignore r))
     (when ok
-      (good (subseq text position pos) pos))))
-
+      (good (gettext text position pos) pos))))
 
 ;;;; Tracing helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
