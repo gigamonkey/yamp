@@ -128,7 +128,7 @@ variable _. Otherwise the value of the parser is returned by the AND."
       (let ((new-body (mapcar #'rewrite and-body)))
         (if result `(,@new-body ,result) and-body)))))
 
-(defun and-wrapper (expr ok result p continuation failure state)
+(defun and-wrapper (expr ok result p continuation state)
   "Wrap an expression to be part of a AND. Arranges to save the state, evaluate
 the expression. If it succeeds, invoke the continuation of the AND, if there is
 one, or succeed, returning the value and position returned by the expression.
@@ -143,7 +143,7 @@ Otherwise fail, rolling back the state. "
                  ,(or continuation `(good ,result ,p))
                  (progn
                    ,@(restore-state state-bindings)
-                   ,failure)))))))
+                   nil)))))))
 
 (defun compile-or (body txt pos names result state)
   "Compile the forms in an OR so that the OR matches if any of the elements
@@ -156,7 +156,7 @@ matches, returning the result from the first match."
        txt pos p names result state
        (compile-or (rest body) txt pos names (gensym "R") state)))))
 
-(defun or-wrapper (expr ok result p continuation failure state)
+(defun or-wrapper (expr ok result p continuation state)
   "Wrap an expression to be part of an OR. Arranges to save the state,
 evaluate the expression, and then either return success or invoke the
 continuation of the OR, if there is one, or fail and roll back the state."
@@ -167,46 +167,45 @@ continuation of the OR, if there is one, or fail and roll back the state."
              (good ,result ,p)
              (progn
                ,@(restore-state state-bindings)
-               ,(or continuation failure)))))))
+               ,continuation))))))
 
 (defun compile-wrapped-form (wrapper form text p-in p names r state continuation)
   "Used to compile forms that are part of ANDs and ORs."
   (with-gensyms (ok)
-    (let ((failure nil))
-      (labels ((wrap (expr) (funcall wrapper expr ok r p continuation failure state))
-               (self (expr) (compile-wrapped-form wrapper expr text p-in p names (gensym "R") state nil)))
-          (cond
+    (labels ((wrap (expr) (funcall wrapper expr ok r p continuation state))
+             (self (expr) (compile-wrapped-form wrapper expr text p-in p names (gensym "R") state nil)))
+      (cond
 
-            ((parser-function-invocation-p form names)
-             (wrap (compile-parser-call form names text p-in state)))
+        ((parser-function-invocation-p form names)
+         (wrap (compile-parser-call form names text p-in state)))
 
-            ((form-p 'and form)
-             (wrap (compile-and (rest form) text p-in names r state)))
+        ((form-p 'and form)
+         (wrap (compile-and (rest form) text p-in names r state)))
 
-            ((form-p 'or form)
-             (wrap (compile-or (rest form) text p-in names r state)))
+        ((form-p 'or form)
+         (wrap (compile-or (rest form) text p-in names r state)))
 
-            ((form-p 'if form)
-             (destructuring-bind (test then else) (cdr form)
-               (wrap `(if ,test ,(self then) ,(self else)))))
+        ((form-p 'if form)
+         (destructuring-bind (test then else) (cdr form)
+           (wrap `(if ,test ,(self then) ,(self else)))))
 
-            ((form-p '-> form)
-             (destructuring-bind (expr var) (cdr form)
-               (funcall wrapper (self expr) ok var p continuation failure state)))
+        ((form-p '-> form)
+         (destructuring-bind (expr var) (cdr form)
+           (funcall wrapper (self expr) ok var p continuation state)))
 
-            ((form-p 'match form)
-             (wrap (compile-match (cadr form) text p-in)))
+        ((form-p 'match form)
+         (wrap (compile-match (cadr form) text p-in)))
 
-            ((form-p 'trace form)
-             (compile-wrapped-form wrapper `(tracer ,(cadr form) ',(cadr form)) text p-in p names (gensym "R") state continuation))
+        ((form-p 'trace form)
+         (compile-wrapped-form wrapper `(tracer ,(cadr form) ',(cadr form)) text p-in p names (gensym "R") state continuation))
 
-            ((stringp form)
-             (wrap (compile-string form text p-in)))
+        ((stringp form)
+         (wrap (compile-string form text p-in)))
 
-            ((characterp form)
-             (wrap (compile-character form text p-in)))
+        ((characterp form)
+         (wrap (compile-character form text p-in)))
 
-            (t (wrap `(good ,form ,p-in))))))))
+        (t (wrap `(good ,form ,p-in)))))))
 
 (defun compile-parser-argument (exp names state)
   "Used to compile expressions in function calls."
