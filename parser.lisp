@@ -142,7 +142,7 @@ Otherwise fail, rolling back the state. "
                  ,(if continuation
                       `(multiple-value-bind (,ok ,result ,p) ,continuation
                          (if ,ok
-                             `(good ,result ,p)
+                             (good ,result ,p)
                              (progn
                                ,@(restore-state state-bindings)
                                nil)))
@@ -392,7 +392,7 @@ returns one character when P does not match."
     (multiple-value-bind (c p) (getc input)
       (good c p))))
 
-(defparserfun look-ahead (p input)
+(defparserfun peek (p input)
   "Succeed if P matches. Does not consume any input in either case."
   (when (funcall p input)
     (good nil input)))

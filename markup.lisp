@@ -20,8 +20,7 @@ variable."
   (document
    (optional modeline)
    (many eol)
-   (=> (many element) `(:body ,@_))
-   eod)
+   (=> (many element) `(:body ,@_)))
 
   (element
    indentation
@@ -66,7 +65,7 @@ variable."
    (decf indent 2))
 
   (definition-list
-   (=> (indented 2 (and (look-ahead term) (many1 (or term definition)))) `(:dl ,@_)))
+   (=> (indented 2 (and (peek term) (many1 (or term definition)))) `(:dl ,@_)))
 
   (term
    indentation "% "
@@ -87,7 +86,7 @@ variable."
    (-> (between "[" "]" (text-until "]")) name)
    " "
    (=> (between "<" ">" (text-until ">")) `(:link_def (:link ,name) (:url ,_)))
-   blank)
+   (or newline blank))
 
   (section-divider whitespace "§" blank `(:section "§"))
 
@@ -162,7 +161,7 @@ variable."
 
   (eod (in-subdoc end-of-subdoc eof))
 
-  (end-of-subdoc (look-ahead "}"))
+  (end-of-subdoc (peek "}"))
 
   (blank
    (or eol eod)
@@ -174,17 +173,13 @@ variable."
    t)
 
   ((indented n p)
-   (look-ahead (counted n #\Space))
+   (peek (counted n #\Space))
    (incf indent n)
    (=> (match p))
    (decf indent n))
 
   ((text-until p)
-   (=> (many1
-        (and
-          (! p)
-          (or escaped-char newline plain-char)))
-       (format nil "~{~a~}" _)))
+   (=> (many1 (and (! p) (or escaped-char newline plain-char))) (format nil "~{~a~}" _)))
 
   ((in-subdoc p1 p2)
    (if (> subdoc-level 0) (match p1) (match p2)))
