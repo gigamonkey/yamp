@@ -74,10 +74,7 @@ variable."
    " %" eol)
 
   (definition
-   (=> (many1 definition-paragraph) `(:dd ,@_)))
-
-  (definition-paragraph
-   indentation (! "% ") paragraph)
+   (=> (many1 (and indentation (! "% ") paragraph)) `(:dd ,@_)))
 
   (blockquote
    (=> (indented 2 (many1 blockquote-element)) `(:blockquote ,@_)))
