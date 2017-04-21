@@ -77,8 +77,7 @@ variable."
    (=> (many1 definition-paragraph) `(:dd ,@_)))
 
   (definition-paragraph
-    (and indentation (! "% "))
-    paragraph)
+   indentation (! "% ") paragraph)
 
   (blockquote
    (=> (indented 2 (many1 blockquote-element)) `(:blockquote ,@_)))

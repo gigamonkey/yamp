@@ -139,7 +139,14 @@ Otherwise fail, rolling back the state. "
            (multiple-value-bind (,ok ,result ,p) ,expr
              (declare (ignorable ,result))
              (if ,ok
-                 ,(or continuation `(good ,result ,p))
+                 ,(if continuation
+                      `(multiple-value-bind (,ok ,result ,p) ,continuation
+                         (if ,ok
+                             `(good ,result ,p)
+                             (progn
+                               ,@(restore-state state-bindings)
+                               nil)))
+                      `(good ,result ,p))
                  (progn
                    ,@(restore-state state-bindings)
                    nil)))))))
