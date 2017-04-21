@@ -19,7 +19,7 @@ variable."
 
   (document
    (optional modeline)
-   (many (try eol))
+   (many eol)
    (=> (many element) `(:body ,@_))
    eod)
 
@@ -32,7 +32,7 @@ variable."
        unordered-list
        definition-list
        blockquote
-       (try linkdef) ;; try because a line in a paragraph could start with a '['
+       linkdef
        section-divider
        paragraph))
 
@@ -42,25 +42,25 @@ variable."
    (=> paragraph-text `(,(keywordize (format nil "H~d" (length stars))) ,@_)))
 
   (section
-   "## " (-> name name) (many1 (try eol))
+   "## " (-> name name) (many1 eol)
    (=> (many (and (! "##.") element)) `(,name ,@_))
    "##." blank)
 
   (verbatim (=> (indented 3 verbatim-text) `(:pre ,_)))
 
-  (verbatim-text (=> (many1 (or (try eol) verbatim-line)) (combine-verbatim _)))
+  (verbatim-text (=> (many1 (or eol verbatim-line)) (combine-verbatim _)))
 
   (verbatim-line
    indentation
    (=> (text (many1 (and (! eol) any-char))))
-   (or eol (try eod)))
+   (or eol eod))
 
   (ordered-list (=> (indented 2 (many1 (list-item "#"))) `(:ol ,@_)))
 
   (unordered-list (=> (indented 2 (many1 (list-item "-"))) `(:ul ,@_)))
 
   ((list-item marker)
-   (try (and indentation (match marker) " "))
+   indentation (match marker) " "
    (extra-indentation 2)
    (=> (many1 (and indentation (or ordered-list unordered-list paragraph))) `(:li ,@_))
    (decf indent 2))
@@ -69,7 +69,7 @@ variable."
    (=> (indented 2 (and (look-ahead term) (many1 (or term definition)))) `(:dl ,@_)))
 
   (term
-   (try (and indentation "% "))
+   indentation "% "
    (=> (many1 (or (text-until (or tag-open " %")) tagged-text)) `(:dt ,@_))
    " %" eol)
 
@@ -77,14 +77,14 @@ variable."
    (=> (many1 definition-paragraph) `(:dd ,@_)))
 
   (definition-paragraph
-   (try (and indentation (! "% ")))
-   paragraph)
+    (and indentation (! "% "))
+    paragraph)
 
   (blockquote
    (=> (indented 2 (many1 blockquote-element)) `(:blockquote ,@_)))
 
   (blockquote-element
-   (try (! (and (counted 3 #\Space) (not-char #\Space))))
+   (! (and (counted 3 #\Space) (not-char #\Space)))
    element)
 
   (linkdef
@@ -98,7 +98,7 @@ variable."
   (paragraph (=> paragraph-text `(:p ,@_)))
 
   (modeline
-   (try "-*-") (-> (many modeline-variable) vars) "-*-"
+   "-*-" (-> (many modeline-variable) vars) "-*-"
    blank
    (when (assoc :subdocs vars)
      (setf subdocs (extract-subdocs vars))))
@@ -125,7 +125,7 @@ variable."
    "|" (text (many1 (not-char "]"))))
 
   (escaped-char
-   (try (and "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<))))
+   (and "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<)))
 
   ((unescaped p) (! escaped-char) (match p))
 
@@ -170,15 +170,15 @@ variable."
 
   (blank
    (or eol eod)
-   (or (many1 (try eol)) eod))
+   (or (many1 eol) eod))
 
   (indentation
-   (try (counted (- indent so-far) #\Space))
+   (counted (- indent so-far) #\Space)
    (setf so-far indent)
    t)
 
   ((indented n p)
-   (try (look-ahead (counted n #\Space)))
+   (look-ahead (counted n #\Space))
    (incf indent n)
    (=> (match p))
    (decf indent n))

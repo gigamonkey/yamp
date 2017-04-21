@@ -356,12 +356,6 @@ cannonical list from."
   (multiple-value-bind (ok r next-input) (funcall p input)
     (if ok (good r next-input) (good nil input))))
 
-(defparserfun try (p input)
-  "Attempt to parse using P, moving forward if it succeeds. If P fails, the try
-consumes no input."
-  (multiple-value-bind (ok r np) (funcall p input)
-    (when ok (good r np))))
-
 (defparserfun many (p input)
   "Match P as many times as possible. Always succeeds as zero is an acceptable
 number of times to match. Returns a list of the values returned by P."
@@ -443,13 +437,13 @@ returns one character when P does not match."
   (let ((indent (make-string (* 2 *trace-level*) :initial-element #\Space))
         (*trace-level* (1+ *trace-level*)))
     (when (plusp *trace*)
-      (format t "~&~aMatching ~a at ~d ..." indent name input))
+      (format t "~&~aMatching ~a at ~d ..." indent name (input-position input)))
 
     (multiple-value-bind (ok r p) (funcall p input)
       (when (plusp *trace*)
         (if ok
-            (format t "~&~a~a at ~d: MATCHED: ~s" indent name (cdr input) r)
-            (format t "~&~a~a at ~d: No match." indent name (cdr input))))
+            (format t "~&~a~a at ~d: MATCHED: ~s" indent name (input-position input) r)
+            (format t "~&~a~a at ~d: No match." indent name (input-position input))))
 
       (values ok r p))))
 
