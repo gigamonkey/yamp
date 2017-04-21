@@ -12,10 +12,10 @@
 
 (defmacro defparser (name (&rest args) &body body)
   "Define a parser named NAME. The argument list can be used to specify
-parameters the parser function will accept in addition to text and position
-arguments. Any arguments after &state will be bound at the beginning of the
-function and can be used by productions within the grammar to maintain state
-which will backtrack when the parser does."
+parameters the parser function will accept in addition to the input argument.
+Any arguments after &state will be bound at the beginning of the function and
+can be used by productions within the grammar to maintain state which will
+backtrack when the parser does."
   `(progn
      (eval-when (:compile-toplevel :load-toplevel :execute)
        (setf (get ',name 'parser-function) t))
@@ -130,7 +130,7 @@ variable _. Otherwise the value of the parser is returned by the AND."
 (defun and-wrapper (expr ok result p continuation state)
   "Wrap an expression to be part of a AND. Arranges to save the state, evaluate
 the expression. If it succeeds, invoke the continuation of the AND, if there is
-one, or succeed, returning the value and position returned by the expression.
+one, or succeed, returning the value and next-input returned by the expression.
 Otherwise fail, rolling back the state. "
   (if (null continuation)
       expr
@@ -281,35 +281,33 @@ cannonical list from."
 
 ;;; Runtime functions used by compiled parsers ;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun good (result position)
+(defun good (result next-input)
   "Return values indicating a parser succeeded."
-  (values t result position))
+  (values t result next-input))
 
 
 ;;;;;; I/O protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defgeneric matching-string (s len input)
-  (:documentation "Does the string S (with length LEN) match at POSITION?"))
+  (:documentation "Does the string S (with length LEN) match at INPUT?"))
 
 (defgeneric matching-char (c input)
-  (:documentation "Does the char C match at POSITION?"))
+  (:documentation "Does the char C match at INPUT?"))
 
 (defgeneric end-of-text-p (input)
   (:documentation "Are we at the end of the text?"))
 
 (defgeneric getc (input)
-  (:documentation "Get the next character and the subsequent position."))
-
-(defgeneric initial-position (input)
-  (:documentation "Get the initial position."))
+  (:documentation "Get the next character and move forward to the next input."))
 
 (defgeneric gettext (input end)
   (:documentation "Get the text between START and END." ))
 
 (defgeneric input-position (input)
-  (:documentation "Current position within the input"))
+  (:documentation "Current position within the input. This is only used for
+  informational purposes in tracing output."))
 
-;;;;;;;;; (cons string position) implementation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;; (cons text position) implementation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmethod matching-string (s len (input cons))
   (destructuring-bind (text . position) input
@@ -330,8 +328,6 @@ cannonical list from."
 (defmethod getc ((input cons))
   (destructuring-bind (text . position) input
     (values (char text position) (cons text (1+ position)))))
-
-(defmethod initial-position ((input cons)) 0)
 
 (defmethod gettext ((input cons) end)
   (destructuring-bind (text . position) input
@@ -357,8 +353,8 @@ cannonical list from."
 
 (defparserfun optional (p input)
   "Match P if we can, returning what P did if it succeeded or nil if it failed."
-  (multiple-value-bind (ok r pos) (funcall p input)
-    (if ok (good r pos) (good nil input))))
+  (multiple-value-bind (ok r next-input) (funcall p input)
+    (if ok (good r next-input) (good nil input))))
 
 (defparserfun try (p input)
   "Attempt to parse using P, moving forward if it succeeds. If P fails, the try
@@ -371,11 +367,11 @@ consumes no input."
 number of times to match. Returns a list of the values returned by P."
   (let ((result nil))
     (loop
-       (multiple-value-bind (ok r pos) (funcall p input)
+       (multiple-value-bind (ok r next-input) (funcall p input)
          (cond
            (ok
             (push r result)
-            (setf input pos))
+            (setf input next-input))
            (t
             (return (good (nreverse result) input))))))))
 
@@ -389,7 +385,7 @@ values returned by P."
         (good (cons r r2) input)))))
 
 (defparserfun not-char (p input)
-  "Succeed only if P does not match at the current position. Consumes and
+  "Succeed only if P does not match at the current input. Consumes and
 returns one character when P does not match."
   (unless (funcall p input)
     (multiple-value-bind (c p) (getc input)
@@ -407,26 +403,26 @@ returns one character when P does not match."
 
 (defparserfun ? (p predicate input)
   "Succeed if P succeeds and the result satisifes the given predicate."
-  (multiple-value-bind (ok r pos) (funcall p input)
+  (multiple-value-bind (ok r next-input) (funcall p input)
     (when (and ok (funcall predicate r))
-      (good r pos))))
+      (good r next-input))))
 
 (defparserfun counted (n p input)
   "Match P N times. Return a list of values matched by P."
   (if (zerop n)
       (good nil input)
-      (multiple-value-bind (ok r pos) (funcall p input)
+      (multiple-value-bind (ok r next-input) (funcall p input)
         (when ok
-          (multiple-value-bind (ok2 r2 pos2) (counted (1- n) p pos)
+          (multiple-value-bind (ok2 r2 next-input) (counted (1- n) p next-input)
             (when ok2
-              (good (cons r r2) pos2)))))))
+              (good (cons r r2) next-input)))))))
 
 (defparserfun text (p input)
   "Capture the text matched by P."
-  (multiple-value-bind (ok r pos) (funcall p input)
+  (multiple-value-bind (ok r next-input) (funcall p input)
     (declare (ignore r))
     (when ok
-      (good (gettext input pos) pos))))
+      (good (gettext input next-input) next-input))))
 
 ;;;; Tracing helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
