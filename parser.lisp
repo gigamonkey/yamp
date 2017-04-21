@@ -44,17 +44,17 @@ for returning specific characters or strings."
          (names (mapcar #'caar productions)))
     (multiple-value-bind (args initial-state) (extract-state-variables arglist)
       (let ((state (append args (mapcar #'car initial-state))))
-        (with-gensyms (txt pos)
+        (with-gensyms (input)
           (flet ((prod-compiler (p) (compile-production p names state)))
-            `(defun ,name (,@args ,txt ,pos)
+            `(defun ,name (,@args ,input)
                (let (,@initial-state)
                  (labels ((show-state (&optional label)
                             (tracemsg "~a: ~@{~(~a~): ~a~^; ~}"
                                       (or label "STATE")
                                       ,@(loop for n in state collect `(quote ,n) collect n)
-                                      "pos" ,pos))
+                                      "pos" (input-position ,input)))
                           ,@(mapcar #'prod-compiler productions))
-                   (,(first names) ,txt ,pos))))))))))
+                   (,(first names) ,input))))))))))
 
 (defun normalize-production (p)
   "Make sure a production is of the form ((foo ...) ...)"
@@ -73,11 +73,10 @@ binding forms."
 (defun compile-production (p names state)
   "Compile a production into a function definition appropriate for a LABELS
 binding."
-  (with-gensyms (txt pos)
+  (with-gensyms (input)
     (destructuring-bind ((name &rest args) &rest body) p
-      `(,name (,@args ,txt ,pos)
-         (declare (ignorable ,txt))
-         ,(compile-and body txt pos names (gensym "R") state)))))
+      `(,name (,@args ,input)
+         ,(compile-and body input names (gensym "R") state)))))
 
 (defun save-state-bindings (names)
   "Generate bindings to save the current value of the state variables."
@@ -91,19 +90,19 @@ that will restore the saved values."
 (defun grammar-p (name names)
   "If a symbol either names a production within the grammar or an external
 parser function."
-  (or (member name names) (get name 'parser-function)))
+  (or (not (null (member name names))) (get name 'parser-function)))
 
-(defun compile-and (body txt pos names result state)
+(defun compile-and (body input names result state)
   "Compile the forms in an AND so that the AND matches if each of the elements
 matches in sequence."
   (unless (null body)
     (let ((body (rewrite-returns body)))
-      (with-gensyms (p)
+      (with-gensyms (next-input)
         (compile-wrapped-form
          #'and-wrapper
          (first body)
-         txt pos p names result state
-         (compile-and (rest body) txt p names (gensym "R") state))))))
+         input next-input names result state
+         (compile-and (rest body) next-input names (gensym "R") state))))))
 
 (defun rewrite-returns (and-body)
   "Rewrite the list of forms to be compiled into a AND so that a (=> ...) form
@@ -145,16 +144,16 @@ Otherwise fail, rolling back the state. "
                    ,@(restore-state state-bindings)
                    nil)))))))
 
-(defun compile-or (body txt pos names result state)
+(defun compile-or (body input names result state)
   "Compile the forms in an OR so that the OR matches if any of the elements
 matches, returning the result from the first match."
   (unless (null body)
-    (with-gensyms (p)
+    (with-gensyms (next-input)
       (compile-wrapped-form
        #'or-wrapper
        (first body)
-       txt pos p names result state
-       (compile-or (rest body) txt pos names (gensym "R") state)))))
+       input next-input names result state
+       (compile-or (rest body) input names (gensym "R") state)))))
 
 (defun or-wrapper (expr ok result p continuation state)
   "Wrap an expression to be part of an OR. Arranges to save the state,
@@ -169,21 +168,21 @@ continuation of the OR, if there is one, or fail and roll back the state."
                ,@(restore-state state-bindings)
                ,continuation))))))
 
-(defun compile-wrapped-form (wrapper form text p-in p names r state continuation)
+(defun compile-wrapped-form (wrapper form input p names r state continuation)
   "Used to compile forms that are part of ANDs and ORs."
   (with-gensyms (ok)
     (labels ((wrap (expr) (funcall wrapper expr ok r p continuation state))
-             (self (expr) (compile-wrapped-form wrapper expr text p-in p names (gensym "R") state nil)))
+             (self (expr) (compile-wrapped-form wrapper expr input p names (gensym "R") state nil)))
       (cond
 
         ((parser-function-invocation-p form names)
-         (wrap (compile-parser-call form names text p-in state)))
+         (wrap (compile-parser-call form names input state)))
 
         ((form-p 'and form)
-         (wrap (compile-and (rest form) text p-in names r state)))
+         (wrap (compile-and (rest form) input names r state)))
 
         ((form-p 'or form)
-         (wrap (compile-or (rest form) text p-in names r state)))
+         (wrap (compile-or (rest form) input names r state)))
 
         ((form-p 'if form)
          (destructuring-bind (test then else) (cdr form)
@@ -194,38 +193,38 @@ continuation of the OR, if there is one, or fail and roll back the state."
            (funcall wrapper (self expr) ok var p continuation state)))
 
         ((form-p 'match form)
-         (wrap (compile-match (cadr form) text p-in)))
+         (wrap (compile-match (cadr form) input)))
 
         ((form-p 'trace form)
-         (compile-wrapped-form wrapper `(tracer ,(cadr form) ',(cadr form)) text p-in p names (gensym "R") state continuation))
+         (compile-wrapped-form wrapper `(tracer ,(cadr form) ',(cadr form)) input p names (gensym "R") state continuation))
 
         ((stringp form)
-         (wrap (compile-string form text p-in)))
+         (wrap (compile-string form input)))
 
         ((characterp form)
-         (wrap (compile-character form text p-in)))
+         (wrap (compile-character form input)))
 
-        (t (wrap `(good ,form ,p-in)))))))
+        (t (wrap `(good ,form ,input)))))))
 
 (defun compile-parser-argument (exp names state)
   "Used to compile expressions in function calls."
-  (with-gensyms (text position)
+  (with-gensyms (input)
     (labels ((thunk (exp)
-               (if (and (consp exp) (grammar-p (car exp) names) (= (length exp) 3))
+               (if (input-is-only-arg-p exp names)
                    `(function ,(car exp))
-                   `(lambda (,text ,position)
-                      (declare (ignorable ,text))
+                   `(lambda (,input)
+                      (declare (ignorable ,input))
                       ,exp)))
              (self (exp) (compile-parser-argument exp names state)))
       (cond
         ((parser-function-invocation-p exp names)
-         (thunk (compile-parser-call exp names text position state)))
+         (thunk (compile-parser-call exp names input state)))
 
         ((form-p 'and exp)
-         (thunk (compile-and (rest exp) text position names (gensym "R") state)))
+         (thunk (compile-and (rest exp) input names (gensym "R") state)))
 
         ((form-p 'or exp)
-         (thunk (compile-or (rest exp) text position names (gensym "R") state)))
+         (thunk (compile-or (rest exp) input names (gensym "R") state)))
 
         ((form-p 'if exp)
          (destructuring-bind (test then else) (cdr exp)
@@ -235,26 +234,34 @@ continuation of the OR, if there is one, or fail and roll back the state."
          (self `(tracer ,(cadr exp) ',(cadr exp))))
 
         ((stringp exp)
-         (thunk (compile-string exp text position)))
+         (thunk (compile-string exp input)))
 
         ((characterp exp)
-         (thunk (compile-character exp text position)))
+         (thunk (compile-character exp input)))
 
         (t exp)))))
 
-(defun compile-string (str text position)
-  `(matching-string ,str ,(length str) ,text ,position))
+(defun input-is-only-arg-p (exp names)
+  "Expression is a call to a grammar function and the only arguments required
+are the ones that will be passed by anyone invoking a grammar function, i.e. the
+input. N.B. the length test depends, obviously, on the number of standard
+arguments which used to be two (text and position) and is now one (combined
+input object)."
+  (and (consp exp) (grammar-p (car exp) names) (= (length exp) 2)))
 
-(defun compile-character (char text position)
-  `(matching-char ,char ,text ,position))
+(defun compile-string (str input)
+  `(matching-string ,str ,(length str) ,input))
 
-(defun compile-match (parser txt p)
-  `(funcall ,parser ,txt ,p))
+(defun compile-character (char input)
+  `(matching-char ,char ,input))
 
-(defun compile-parser-call (exp names txt p state)
+(defun compile-match (parser input)
+  `(funcall ,parser ,input))
+
+(defun compile-parser-call (exp names input state)
   (destructuring-bind (name &rest args) (rewrite-form exp names)
     (flet ((comp (x) (compile-parser-argument x names state)))
-      `(,name ,@(mapcar #'comp args) ,txt ,p))))
+      `(,name ,@(mapcar #'comp args) ,input))))
 
 (defun rewrite-form (form names)
   "Rewrite bare symbols naming parser productions or parser functions into
@@ -281,163 +288,145 @@ cannonical list from."
 
 ;;;;;; I/O protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defgeneric matching-string (s len text position)
+(defgeneric matching-string (s len input)
   (:documentation "Does the string S (with length LEN) match at POSITION?"))
 
-(defgeneric matching-char (c text position)
+(defgeneric matching-char (c input)
   (:documentation "Does the char C match at POSITION?"))
 
-(defgeneric end-of-text-p (text position)
+(defgeneric end-of-text-p (input)
   (:documentation "Are we at the end of the text?"))
 
-(defgeneric getc (text position)
+(defgeneric getc (input)
   (:documentation "Get the next character and the subsequent position."))
 
-(defgeneric initial-position (text)
+(defgeneric initial-position (input)
   (:documentation "Get the initial position."))
 
-(defgeneric gettext (text start end)
+(defgeneric gettext (input end)
   (:documentation "Get the text between START and END." ))
 
-;;;;;;;;; String implementation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defgeneric input-position (input)
+  (:documentation "Current position within the input"))
 
-(defmethod matching-string (s len (text string) position)
-  (let ((end (+ position len)))
-    (when (and (<= end (length text))
-               (string= s text :start2 position :end2 end))
-      (good s end))))
+;;;;;;;;; (cons string position) implementation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defmethod matching-char (c (text string) position)
-  (when (and (< position (length text)) (char= c (char text position)))
-    (good c (1+ position))))
+(defmethod matching-string (s len (input cons))
+  (destructuring-bind (text . position) input
+    (let ((end (+ position len)))
+      (when (and (<= end (length text))
+                 (string= s text :start2 position :end2 end))
+        (good s (cons text end))))))
 
-(defmethod end-of-text-p ((text string) position) (>= position (length text)))
+(defmethod matching-char (c (input cons))
+  (destructuring-bind (text . position) input
+    (when (and (< position (length text)) (char= c (char text position)))
+      (good c (cons text (1+ position))))))
 
-(defmethod getc ((text string) position) (values (char text position) (1+ position)))
+(defmethod end-of-text-p ((input cons))
+  (destructuring-bind (text . position) input
+    (>= position (length text))))
 
-(defmethod initial-position ((text string)) 0)
+(defmethod getc ((input cons))
+  (destructuring-bind (text . position) input
+    (values (char text position) (cons text (1+ position)))))
 
-(defmethod gettext ((text string) start end) (subseq text start end))
+(defmethod initial-position ((input cons)) 0)
 
-;;;;;;;;; Stream implementation ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defmethod gettext ((input cons) end)
+  (destructuring-bind (text . position) input
+    (subseq text position (cdr end))))
 
-(defmethod matching-string (s len (text stream) position)
-  (when (file-position text position)
-    (let ((ss (make-string len)))
-      (let ((read (read-sequence ss text)))
-        (when (and (= read len) (string= ss s))
-          (good s (file-position text)))))))
-
-(defmethod matching-char (c (text stream) position)
-  (multiple-value-bind (c2 p) (getc text position)
-    (when (and c2 (char= c c2))
-      (good c p))))
-
-(defmethod end-of-text-p ((text stream) position)
-  (when (file-position text position)
-    (not (peek-char t text nil nil))))
-
-(defmethod getc ((text stream) position)
-  (when (file-position text position)
-    (let ((c (read-char text nil nil)))
-      (values c (file-position text)))))
-
-(defmethod initial-position ((text stream)) (file-position text))
-
-(defmethod gettext ((text stream) start end)
-  (when (file-position text start)
-    (with-output-to-string (s)
-      (loop until (= (file-position text) end)
-           do (write-char (read-char text) s)))))
+(defmethod input-position ((input cons)) (cdr input))
 
 ;;; Parser primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defparserfun any-char (text position)
+(defparserfun any-char (input)
   "Match a single character. Succeeds everywhere except at the EOF."
-  (unless (end-of-text-p text position)
-    (multiple-value-bind (c p) (getc text position)
+  (unless (end-of-text-p input)
+    (multiple-value-bind (c p) (getc input)
       (good c p))))
 
-(defparserfun eof (text position)
+(defparserfun eof (input)
   "Succeed when we are at the end of the text."
-  (when (end-of-text-p text position)
-    (good t position)))
+  (when (end-of-text-p input)
+    (good t input)))
 
 
 ;;; Parser combinators ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defparserfun optional (p text position)
+(defparserfun optional (p input)
   "Match P if we can, returning what P did if it succeeded or nil if it failed."
-  (multiple-value-bind (ok r pos) (funcall p text position)
-    (if ok (good r pos) (good nil position))))
+  (multiple-value-bind (ok r pos) (funcall p input)
+    (if ok (good r pos) (good nil input))))
 
-(defparserfun try (p text position)
+(defparserfun try (p input)
   "Attempt to parse using P, moving forward if it succeeds. If P fails, the try
 consumes no input."
-  (multiple-value-bind (ok r np) (funcall p text position)
+  (multiple-value-bind (ok r np) (funcall p input)
     (when ok (good r np))))
 
-(defparserfun many (p text position)
+(defparserfun many (p input)
   "Match P as many times as possible. Always succeeds as zero is an acceptable
 number of times to match. Returns a list of the values returned by P."
   (let ((result nil))
     (loop
-       (multiple-value-bind (ok r pos) (funcall p text position)
+       (multiple-value-bind (ok r pos) (funcall p input)
          (cond
            (ok
             (push r result)
-            (setf position pos))
+            (setf input pos))
            (t
-            (return (good (nreverse result) position))))))))
+            (return (good (nreverse result) input))))))))
 
-(defparserfun many1 (p text position)
+(defparserfun many1 (p input)
   "Match P as many times as possible but at least once. Returns a list of the
 values returned by P."
-  (multiple-value-bind (ok r pos) (funcall p text position)
+  (multiple-value-bind (ok r input) (funcall p input)
     (when ok
-      (multiple-value-bind (ok r2 pos) (many p text pos)
+      (multiple-value-bind (ok r2 input) (many p input)
         (declare (ignore ok)) ; many always succeeds.
-        (good (cons r r2) pos)))))
+        (good (cons r r2) input)))))
 
-(defparserfun not-char (p text position)
+(defparserfun not-char (p input)
   "Succeed only if P does not match at the current position. Consumes and
 returns one character when P does not match."
-  (unless (funcall p text position)
-    (multiple-value-bind (c p) (getc text position)
+  (unless (funcall p input)
+    (multiple-value-bind (c p) (getc input)
       (good c p))))
 
-(defparserfun look-ahead (p text position)
+(defparserfun look-ahead (p input)
   "Succeed if P matches. Does not consume any input in either case."
-  (when (funcall p text position)
-    (good nil position)))
+  (when (funcall p input)
+    (good nil input)))
 
-(defparserfun ! (p text position)
+(defparserfun ! (p input)
   "Succeed if P does not match. Does not consume any input in either case."
-  (unless (funcall p text position)
-    (good nil position)))
+  (unless (funcall p input)
+    (good nil input)))
 
-(defparserfun ? (p predicate text position)
+(defparserfun ? (p predicate input)
   "Succeed if P succeeds and the result satisifes the given predicate."
-  (multiple-value-bind (ok r pos) (funcall p text position)
+  (multiple-value-bind (ok r pos) (funcall p input)
     (when (and ok (funcall predicate r))
       (good r pos))))
 
-(defparserfun counted (n p text position)
+(defparserfun counted (n p input)
   "Match P N times. Return a list of values matched by P."
   (if (zerop n)
-      (good nil position)
-      (multiple-value-bind (ok r pos) (funcall p text position)
+      (good nil input)
+      (multiple-value-bind (ok r pos) (funcall p input)
         (when ok
-          (multiple-value-bind (ok2 r2 pos2) (counted (1- n) p text pos)
+          (multiple-value-bind (ok2 r2 pos2) (counted (1- n) p pos)
             (when ok2
               (good (cons r r2) pos2)))))))
 
-(defparserfun text (p text position)
+(defparserfun text (p input)
   "Capture the text matched by P."
-  (multiple-value-bind (ok r pos) (funcall p text position)
+  (multiple-value-bind (ok r pos) (funcall p input)
     (declare (ignore r))
     (when ok
-      (good (gettext text position pos) pos))))
+      (good (gettext input pos) pos))))
 
 ;;;; Tracing helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -447,24 +436,24 @@ returns one character when P does not match."
 (defun trace-on () (incf *trace*))
 (defun trace-off () (decf *trace*))
 
-(defparserfun tracing (p text position)
+(defparserfun tracing (p input)
   "Turn on tracing for the dynamic scope of the parser P."
   (trace-on)
-  (unwind-protect (funcall p text position)
+  (unwind-protect (funcall p input)
     (trace-off)))
 
-(defparserfun tracer (p name text position)
+(defparserfun tracer (p name input)
   "Trace the execution of the parser P reporting it as NAME."
   (let ((indent (make-string (* 2 *trace-level*) :initial-element #\Space))
         (*trace-level* (1+ *trace-level*)))
     (when (plusp *trace*)
-      (format t "~&~aMatching ~a at ~d ..." indent name position))
+      (format t "~&~aMatching ~a at ~d ..." indent name input))
 
-    (multiple-value-bind (ok r p) (funcall p text position)
+    (multiple-value-bind (ok r p) (funcall p input)
       (when (plusp *trace*)
         (if ok
-            (format t "~&~a~a at ~d: MATCHED: ~s" indent name position r)
-            (format t "~&~a~a at ~d: No match." indent name position)))
+            (format t "~&~a~a at ~d: MATCHED: ~s" indent name (cdr input) r)
+            (format t "~&~a~a at ~d: No match." indent name (cdr input))))
 
       (values ok r p))))
 

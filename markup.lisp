@@ -12,7 +12,7 @@ they should be provided via the SUBDOCS keyword arg. Or they can be specified in
 the modeline as a comma-delimited list in the value of the 'subdoc' file
 variable."
   (let ((text (detab text))) ;; This actually only currently works for string input
-    (multiple-value-bind (ok r) (%markup subdocs text (initial-position text))
+    (multiple-value-bind (ok r) (%markup subdocs (cons text 0))
       (and ok r))))
 
 (defparser %markup (subdocs &state (indent 0) (so-far 0) (subdoc-level 0))
@@ -197,6 +197,7 @@ variable."
    (match start)
    (=> (match p))
    (match end)))
+
 
 ;;; Utility functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
