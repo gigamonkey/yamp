@@ -46,7 +46,7 @@ interpreted as parsers."
     (multiple-value-bind (args initial-state) (extract-state-variables arglist)
       (let ((state (append args (mapcar #'car initial-state))))
         (with-gensyms (input)
-          (flet ((prod-compiler (p) (new-compile-production p names state)))
+          (flet ((prod-compiler (p) (compile-production p names state)))
             `(defun ,name (,@args ,input)
                (let (,@initial-state)
                  (labels ((show-state (&optional label)
@@ -85,27 +85,27 @@ that will restore the saved values."
 parser function."
   (or (not (null (member name names))) (get name 'parser-function)))
 
-(defun new-compile-production (p names state)
+(defun compile-production (p names state)
   "Compile a production into a function definition appropriate for a LABELS
 binding."
   (with-gensyms (input)
     (destructuring-bind ((name &rest args) &rest body) p
-      `(,name (,@args ,input) ,(new-compile-and body input names state)))))
+      `(,name (,@args ,input) ,(compile-and body input names state)))))
 
-(defun new-compile-and (body input names state)
+(defun compile-and (body input names state)
   "Compile the forms in an AND so that the AND matches if each of the elements
 matches in sequence."
   (with-gensyms (ok result next-input and fail)
     (labels ((wrap (x var)
                `(or
-                 (setf (values ,ok ,var ,next-input) ,(new-compile-form x next-input names state))
+                 (setf (values ,ok ,var ,next-input) ,(compile-form x next-input names state))
                  (go ,fail)))
              (comp (x)
                (cond
                  ((form-p '-> x) (wrap (second x) (third x)))
                  (t (wrap x result)))))
       (let ((state-bindings (save-state-bindings state)))
-        (multiple-value-bind (body variables) (new-rewrite-and-body body)
+        (multiple-value-bind (body variables) (rewrite-and-body body)
           `(block ,and
              (let (,@state-bindings ,@variables ,ok ,result (,next-input ,input))
                (tagbody
@@ -115,7 +115,7 @@ matches in sequence."
                   ,@(restore-state state-bindings)
                   (return-from ,and nil)))))))))
 
-(defun new-rewrite-and-body (body)
+(defun rewrite-and-body (body)
   "Rewrite the list of forms to be compiled into a AND so that a (=> ...) form
 will have its result returned as the result of the AND. If the => form specifies
 a value expression it can refer to the value matched by the parser via the
@@ -135,12 +135,12 @@ variable _. Otherwise the value of the parser is returned by the AND."
       (let ((new-body (mapcar #'rewrite body)))
         (values (if result `(,@new-body ,result) body) variables)))))
 
-(defun new-compile-or (body input names state)
+(defun compile-or (body input names state)
   (let ((state-bindings (save-state-bindings state)))
     (with-gensyms (ok result next-input or good)
       (flet ((comp (x)
                `(cond
-                  ((setf (values ,ok ,result ,next-input) ,(new-compile-form x input names state))
+                  ((setf (values ,ok ,result ,next-input) ,(compile-form x input names state))
                    (go ,good))
                   (t ,@(restore-state state-bindings)))))
         `(block ,or
@@ -151,14 +151,14 @@ variable _. Otherwise the value of the parser is returned by the AND."
                 ,good
                 (return-from ,or (values ,ok ,result ,next-input)))))))))
 
-(defun new-compile-form (form input names state)
+(defun compile-form (form input names state)
   "Compile a single parser form."
   (cond
-    ((parser-function-invocation-p form names) (compile-parser-call form names input state))
+    ((parser-call-p form names) (compile-parser-call form names input state))
 
-    ((form-p 'and form) (new-compile-and (rest form) input names state))
+    ((form-p 'and form) (compile-and (rest form) input names state))
 
-    ((form-p 'or form) (new-compile-or (rest form) input names state))
+    ((form-p 'or form) (compile-or (rest form) input names state))
 
     ((form-p 'if form) (compile-if (cdr form) input names state))
 
@@ -172,8 +172,6 @@ variable _. Otherwise the value of the parser is returned by the AND."
 
     (t `(good ,form ,input))))
 
-;;; Common compiler functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (defun compile-parser-argument (exp names state)
   "Used to compile expressions in function calls."
   (with-gensyms (input)
@@ -183,27 +181,22 @@ variable _. Otherwise the value of the parser is returned by the AND."
                    `(lambda (,input) ,exp)))
              (self (exp) (compile-parser-argument exp names state)))
       (cond
-        ((parser-function-invocation-p exp names)
+        ((parser-call-p exp names)
          (thunk (compile-parser-call exp names input state)))
 
-        ((form-p 'and exp)
-         (thunk (new-compile-and (rest exp) input names state)))
+        ((form-p 'and exp) (thunk (compile-and (rest exp) input names state)))
 
-        ((form-p 'or exp)
-         (thunk (new-compile-or (rest exp) input names state)))
+        ((form-p 'or exp) (thunk (compile-or (rest exp) input names state)))
 
         ((form-p 'if exp)
          (destructuring-bind (test then else) (cdr exp)
            `(if ,test ,(self then) ,(self else))))
 
-        ((form-p 'trace exp)
-         (self `(tracer ,(cadr exp) ',(cadr exp))))
+        ((form-p 'trace exp) (self `(tracer ,(cadr exp) ',(cadr exp))))
 
-        ((stringp exp)
-         (thunk (compile-string exp input)))
+        ((stringp exp) (thunk (compile-string exp input)))
 
-        ((characterp exp)
-         (thunk (compile-character exp input)))
+        ((characterp exp) (thunk (compile-character exp input)))
 
         (t exp)))))
 
@@ -225,12 +218,12 @@ input object)."
   `(funcall ,parser ,input))
 
 (defun compile-if (body input names state)
-  (flet ((comp (x) (new-compile-form x input names state)))
+  (flet ((comp (x) (compile-form x input names state)))
     (destructuring-bind (test then else) body
       `(if ,test ,(comp then) ,(comp else)))))
 
 (defun compile-tracer (form input names state)
-  (new-compile-form `(tracer ,(cadr form) ',(cadr form)) input names state))
+  (compile-form `(tracer ,(cadr form) ',(cadr form)) input names state))
 
 (defun compile-parser-call (exp names input state)
   (destructuring-bind (name &rest args) (rewrite-form exp names)
@@ -244,7 +237,7 @@ cannonical list from."
     ((and (symbolp form) (grammar-p form names)) (list form))
     (t form)))
 
-(defun parser-function-invocation-p (form names)
+(defun parser-call-p (form names)
   (or
    (and (symbolp form) (grammar-p form names))
    (and (consp form) (symbolp (car form)) (grammar-p (car form) names))))
