@@ -1,0 +1,4 @@
+["body",
+ ["p","Regular ",["link","text"]," with ",["link","links",["key","foo"]]," blah."],
+ ["link_def",["link","text"],["url","http://www.example.com/text/"]],
+ ["link_def",["link","foo"],["url","http://www.example.com/foo/"]]]
