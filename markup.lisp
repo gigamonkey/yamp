@@ -12,10 +12,10 @@ they should be provided via the SUBDOCS keyword arg. Or they can be specified in
 the modeline as a comma-delimited list in the value of the 'subdoc' file
 variable."
   (let ((text (detab text))) ;; This actually only currently works for string input
-    (multiple-value-bind (ok r) (%markup (cons text 0))
+    (multiple-value-bind (ok r) (markup-lang (cons text 0))
       (and ok r))))
 
-(defparser %markup (&state subdocs (indent 0) (so-far 0) (subdoc-level 0))
+(defparser markup-lang (&state subdocs (indent 0) (so-far 0) (subdoc-level 0))
 
   (document
    (optional modeline)

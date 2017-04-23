@@ -20,6 +20,16 @@ backtrack when the parser does."
        (setf (get ',name 'parser-function) t))
      ,(compile-parser name args body)))
 
+(defmacro defterm (name (&rest args) &body body)
+  "Define a parser function using the same language as DEFPARSER."
+  (multiple-value-bind (docstring body) (extract-docstring body)
+    (with-gensyms (input)
+      `(progn
+         (eval-when (:compile-toplevel :load-toplevel :execute)
+           (setf (get ',name 'parser-function) t))
+         (defun ,name (,@args ,input)
+           ,@(when docstring (list docstring))
+           ,(compile-and body input () ()))))))
 
 ;;; Compiler ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -270,17 +280,18 @@ cannonical list from."
 
 ;;; Parser primitives and combinators ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun good (result next-input)
+  "Return values indicating a parser succeeded."
+  (values t result next-input))
+
 (defmacro defparserfun (name (&rest args) &body body)
-  "Macro for defining hand-written functions that act as parsers. Used
-internally to define things that can't be expressed as normal parsers."
+  "Macro for defining hand-written functions that act as parser elements. Used
+to define things that can't be expressed as normal parsers but which don't need
+to be built into the compiler proper."
   `(progn
      (eval-when (:compile-toplevel :load-toplevel :execute)
        (setf (get ',name 'parser-function) t))
      (defun ,name (,@args) ,@body)))
-
-(defun good (result next-input)
-  "Return values indicating a parser succeeded."
-  (values t result next-input))
 
 (defparserfun any-char (input)
   "Match a single character. Succeeds everywhere except at the EOF."
@@ -343,11 +354,9 @@ values returned by P."
     (when ok
       (good (gettext input next-input) next-input))))
 
-(defparser counted (n p)
+(defterm counted (n p)
   "Match P N times. Return a list of values matched by P."
-  ((counted n p)
-   (if (zerop n) nil (and (-> (match p) first) (=> (counted (1- n) p) `(,first ,@_))))))
-
+  (if (zerop n) nil (and (-> (match p) first) (=> (counted (1- n) p) `(,first ,@_)))))
 
 ;;; Tracing helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
