@@ -7,8 +7,7 @@
 (in-package :com.gigamonkeys.yamp)
 
 
-;;; Public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
+;;; Public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defmacro defparser (name (&rest args) &body body)
   "Define a parser named NAME. The argument list can be used to specify
@@ -22,40 +21,31 @@ backtrack when the parser does."
      ,(compile-parser name args body)))
 
 
-(defmacro defparserfun (name (&rest args) &body body)
-  "Macro for defining hand-written functions that act as parsers. Used
-internally to define things that can't be expressed as normal parsers."
-  `(progn
-     (eval-when (:compile-toplevel :load-toplevel :execute)
-       (setf (get ',name 'parser-function) t))
-     (defun ,name (,@args) ,@body)))
-
-(defun value (x)
-  "Return X as a value rather than interpreting it as a parser. Mostly useful
-for returning specific characters or strings which would otherwise be
-interpreted as parsers."
-  x)
-
-
-;;; Compiler ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
+;;; Compiler ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun compile-parser (name arglist body)
-  (let* ((productions (mapcar #'normalize-production body))
-         (names (mapcar #'caar productions)))
-    (multiple-value-bind (args initial-state) (extract-state-variables arglist)
-      (let ((state (append args (mapcar #'car initial-state))))
-        (with-gensyms (input)
-          (flet ((prod-compiler (p) (compile-production p names state)))
-            `(defun ,name (,@args ,input)
-               (let (,@initial-state)
-                 (labels ((show-state (&optional label)
-                            (tracemsg "~a: ~@{~(~a~): ~a~^; ~}"
-                                      (or label "STATE")
-                                      ,@(loop for n in state collect `(quote ,n) collect n)
-                                      "pos" (input-position ,input)))
-                          ,@(mapcar #'prod-compiler productions))
-                   (,(first names) ,input))))))))))
+  (multiple-value-bind (docstring body) (extract-docstring body)
+    (let* ((productions (mapcar #'normalize-production body))
+           (names (mapcar #'caar productions)))
+      (multiple-value-bind (args initial-state) (extract-state-variables arglist)
+        (let ((state (append args (mapcar #'car initial-state))))
+          (flet ((comp (p) (compile-production p names state)))
+            (with-gensyms (input)
+              `(defun ,name (,@args ,input)
+                 ,@(when docstring (list docstring))
+                 (let (,@initial-state)
+                   (labels ((show-state (&optional label)
+                              (tracemsg "~a: ~@{~(~a~): ~a~^; ~}"
+                                        (or label "STATE")
+                                        ,@(loop for n in state collect `(quote ,n) collect n)
+                                        "pos" (input-position ,input)))
+                            ,@(mapcar #'comp productions))
+                     (,(first names) ,@args ,input)))))))))))
+
+(defun extract-docstring (body)
+  (if (and (consp body) (stringp (first body)))
+      (values (first body) (rest body))
+      (values nil body)))
 
 (defun normalize-production (p)
   "Make sure a production is of the form ((foo ...) ...)"
@@ -91,6 +81,20 @@ binding."
   (with-gensyms (input)
     (destructuring-bind ((name &rest args) &rest body) p
       `(,name (,@args ,input) ,(compile-and body input names state)))))
+
+(defun compile-form (form input names state)
+  "Compile a single parser form as it would appear in an AND or OR."
+  (labels ((self (x) (compile-form x input names state)))
+    (cond
+      ((form-p 'and form)          (compile-and (rest form) input names state))
+      ((form-p 'or form)           (compile-or (rest form) input names state))
+      ((form-p 'if form)           (compile-if (cdr form) #'self))
+      ((form-p 'match form)        (compile-match (cadr form) input))
+      ((form-p 'trace form)        (compile-trace form #'self))
+      ((parser-call-p form names)  (compile-parser-call form input names state))
+      ((stringp form)              (compile-string form input))
+      ((characterp form)           (compile-character form input))
+      (t                           `(good ,form ,input)))))
 
 (defun compile-and (body input names state)
   "Compile the forms in an AND so that the AND matches if each of the elements
@@ -151,56 +155,42 @@ variable _. Otherwise the value of the parser is returned by the AND."
                 ,good
                 (return-from ,or (values ,ok ,result ,next-input)))))))))
 
-(defun compile-form (form input names state)
-  "Compile a single parser form."
-  (cond
-    ((parser-call-p form names) (compile-parser-call form names input state))
+(defun compile-if (body comp)
+  (destructuring-bind (test then else) body
+    `(if ,test ,(funcall comp then) ,(funcall comp else))))
 
-    ((form-p 'and form) (compile-and (rest form) input names state))
+(defun compile-match (parser input)
+  `(funcall ,parser ,input))
 
-    ((form-p 'or form) (compile-or (rest form) input names state))
+(defun compile-trace (form comp)
+  (funcall comp `(tracer ,(cadr form) ',(cadr form))))
 
-    ((form-p 'if form) (compile-if (cdr form) input names state))
+(defun compile-parser-call (exp input names state)
+  (destructuring-bind (name &rest args) (rewrite-form exp names)
+    (flet ((comp (x) (compile-parser-argument x names state)))
+      `(,name ,@(mapcar #'comp args) ,input))))
 
-    ((form-p 'match form) (compile-match (cadr form) input))
-
-    ((form-p 'trace form) (compile-tracer form input names state))
-
-    ((stringp form) (compile-string form input))
-
-    ((characterp form) (compile-character form input))
-
-    (t `(good ,form ,input))))
-
-(defun compile-parser-argument (exp names state)
-  "Used to compile expressions in function calls."
+(defun compile-parser-argument (form names state)
+  "Compile a form appearing as an argument to a parser function."
   (with-gensyms (input)
-    (labels ((thunk (exp)
-               (if (input-is-only-arg-p exp names)
-                   `(function ,(car exp))
-                   `(lambda (,input) ,exp)))
-             (self (exp) (compile-parser-argument exp names state)))
+    (labels ((self (x) (compile-parser-argument x names state)))
       (cond
-        ((parser-call-p exp names)
-         (thunk (compile-parser-call exp names input state)))
+        ((or
+          (parser-call-p form names)
+          (form-p 'and form)
+          (form-p 'or form)
+          (stringp form)
+          (characterp form))
+         (thunkify (compile-form form input names state) input names))
 
-        ((form-p 'and exp) (thunk (compile-and (rest exp) input names state)))
+        ((form-p 'if form) (compile-if (cdr form) #'self))
+        ((form-p 'trace form) (compile-trace form #'self))
+        (t form)))))
 
-        ((form-p 'or exp) (thunk (compile-or (rest exp) input names state)))
+(defun thunkify (x input names)
+  (if (one-arg-parser-call-p x names) `#',(car x) `(lambda (,input) ,x)))
 
-        ((form-p 'if exp)
-         (destructuring-bind (test then else) (cdr exp)
-           `(if ,test ,(self then) ,(self else))))
-
-        ((form-p 'trace exp) (self `(tracer ,(cadr exp) ',(cadr exp))))
-
-        ((stringp exp) (thunk (compile-string exp input)))
-
-        ((characterp exp) (thunk (compile-character exp input)))
-
-        (t exp)))))
-
-(defun input-is-only-arg-p (exp names)
+(defun one-arg-parser-call-p (exp names)
   "Expression is a call to a grammar function and the only arguments required
 are the ones that will be passed by anyone invoking a grammar function, i.e. the
 input. N.B. the length test depends, obviously, on the number of standard
@@ -208,34 +198,16 @@ arguments which used to be two (text and position) and is now one (combined
 input object)."
   (and (consp exp) (grammar-p (car exp) names) (= (length exp) 2)))
 
-(defun compile-string (str input)
-  `(matching-string ,str ,(length str) ,input))
-
-(defun compile-character (char input)
-  `(matching-char ,char ,input))
-
-(defun compile-match (parser input)
-  `(funcall ,parser ,input))
-
-(defun compile-if (body input names state)
-  (flet ((comp (x) (compile-form x input names state)))
-    (destructuring-bind (test then else) body
-      `(if ,test ,(comp then) ,(comp else)))))
-
-(defun compile-tracer (form input names state)
-  (compile-form `(tracer ,(cadr form) ',(cadr form)) input names state))
-
-(defun compile-parser-call (exp names input state)
-  (destructuring-bind (name &rest args) (rewrite-form exp names)
-    (flet ((comp (x) (compile-parser-argument x names state)))
-      `(,name ,@(mapcar #'comp args) ,input))))
-
 (defun rewrite-form (form names)
   "Rewrite bare symbols naming parser productions or parser functions into
 cannonical list from."
   (cond
     ((and (symbolp form) (grammar-p form names)) (list form))
     (t form)))
+
+(defun compile-string (str input) `(matching-string ,str ,(length str) ,input))
+
+(defun compile-character (char input) `(matching-char ,char ,input))
 
 (defun parser-call-p (form names)
   (or
@@ -246,14 +218,7 @@ cannonical list from."
   (and (consp form) (eql (car form) what)))
 
 
-;;; Runtime functions used by compiled parsers ;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun good (result next-input)
-  "Return values indicating a parser succeeded."
-  (values t result next-input))
-
-
-;;;;;; I/O protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; I/O protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defgeneric matching-string (s len input)
   (:documentation "Does the string S (with length LEN) match at INPUT?"))
@@ -302,7 +267,20 @@ cannonical list from."
 
 (defmethod input-position ((input cons)) (cdr input))
 
-;;; Parser primitives ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; Parser primitives and combinators ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defmacro defparserfun (name (&rest args) &body body)
+  "Macro for defining hand-written functions that act as parsers. Used
+internally to define things that can't be expressed as normal parsers."
+  `(progn
+     (eval-when (:compile-toplevel :load-toplevel :execute)
+       (setf (get ',name 'parser-function) t))
+     (defun ,name (,@args) ,@body)))
+
+(defun good (result next-input)
+  "Return values indicating a parser succeeded."
+  (values t result next-input))
 
 (defparserfun any-char (input)
   "Match a single character. Succeeds everywhere except at the EOF."
@@ -314,9 +292,6 @@ cannonical list from."
   "Succeed when we are at the end of the text."
   (when (end-of-text-p input)
     (good t input)))
-
-
-;;; Parser combinators ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defparserfun optional (p input)
   "Match P if we can, returning what P did if it succeeded or nil if it failed."
@@ -345,13 +320,6 @@ values returned by P."
         (declare (ignore ok)) ; many always succeeds.
         (good (cons r r2) input)))))
 
-(defparserfun not-char (p input)
-  "Succeed only if P does not match at the current input. Consumes and
-returns one character when P does not match."
-  (unless (funcall p input)
-    (multiple-value-bind (c p) (getc input)
-      (good c p))))
-
 (defparserfun peek (p input)
   "Succeed if P matches. Does not consume any input in either case."
   (when (funcall p input)
@@ -368,16 +336,6 @@ returns one character when P does not match."
     (when (and ok (funcall predicate r))
       (good r next-input))))
 
-(defparserfun counted (n p input)
-  "Match P N times. Return a list of values matched by P."
-  (if (zerop n)
-      (good nil input)
-      (multiple-value-bind (ok r next-input) (funcall p input)
-        (when ok
-          (multiple-value-bind (ok2 r2 next-input) (counted (1- n) p next-input)
-            (when ok2
-              (good (cons r r2) next-input)))))))
-
 (defparserfun text (p input)
   "Capture the text matched by P."
   (multiple-value-bind (ok r next-input) (funcall p input)
@@ -385,19 +343,30 @@ returns one character when P does not match."
     (when ok
       (good (gettext input next-input) next-input))))
 
-;;;; Tracing helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defparser counted (n p)
+  "Match P N times. Return a list of values matched by P."
+  ((counted n p)
+   (if (zerop n) nil (and (-> (match p) first) (=> (counted (1- n) p) `(,first ,@_))))))
+
+
+;;; Tracing helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Sometimes it's useful to trace the behavior of a grammar. These functions
+;;; allow you to annotate your grammer with (trace ...) and (tracing ...) forms
+;;; to trace specific parts of the grammar and to turn tracing on in particular
+;;; dynamic scopes.
 
 (defvar *trace* 0)
 (defvar *trace-level* 0)
 
-(defun trace-on () (incf *trace*))
-(defun trace-off () (decf *trace*))
+(defun trace-on () (setf *trace* 1))
+(defun trace-off () (setf *trace* 0))
 
 (defparserfun tracing (p input)
   "Turn on tracing for the dynamic scope of the parser P."
-  (trace-on)
+  (incf *trace*)
   (unwind-protect (funcall p input)
-    (trace-off)))
+    (decf *trace*)))
 
 (defparserfun tracer (p name input)
   "Trace the execution of the parser P reporting it as NAME."

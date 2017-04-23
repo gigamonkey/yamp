@@ -6,16 +6,16 @@
 
 (in-package :com.gigamonkeys.yamp)
 
-(defun markup (text &key subdocs)
+(defun markup (text)
   "Parse a string containing markup. If the markup uses subdoc tags,
 they should be provided via the SUBDOCS keyword arg. Or they can be specified in
 the modeline as a comma-delimited list in the value of the 'subdoc' file
 variable."
   (let ((text (detab text))) ;; This actually only currently works for string input
-    (multiple-value-bind (ok r) (%markup subdocs (cons text 0))
+    (multiple-value-bind (ok r) (%markup (cons text 0))
       (and ok r))))
 
-(defparser %markup (subdocs &state (indent 0) (so-far 0) (subdoc-level 0))
+(defparser %markup (&state subdocs (indent 0) (so-far 0) (subdoc-level 0))
 
   (document
    (optional modeline)
@@ -128,7 +128,7 @@ variable."
    (! blank)
    newline-char
    indentation
-   (value #\Space))
+   '#\Space)
 
   (newline-char (setf so-far 0) #\Newline)
 
@@ -180,6 +180,8 @@ variable."
 
   ((text-until p)
    (=> (many1 (and (! p) (or escaped-char newline plain-char))) (format nil "~{~a~}" _)))
+
+  ((not-char p) (and (! p) any-char))
 
   ((in-subdoc p1 p2)
    (if (> subdoc-level 0) (match p1) (match p2)))

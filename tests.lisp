@@ -21,7 +21,7 @@
 (defun test-file (txt-file verbose quiet)
   (let* ((json-file (make-pathname :type "json" :defaults txt-file))
          (json (listify (parse-json (file-text json-file)))))
-    (let ((r (markup (file-text txt-file) :subdocs '(:note :comment))))
+    (let ((r (markup (file-text txt-file))))
       (cond
         ((and r (equalp json r))
          (unless quiet
@@ -39,7 +39,7 @@
 (defun test-file2 (txt-file verbose quiet)
   (let* ((json-file (make-pathname :type "json" :defaults txt-file))
          (json (listify (parse-json (file-text json-file)))))
-    (let ((r (with-open-file (txt txt-file) (markup txt :subdocs '(:note :comment)))))
+    (let ((r (with-open-file (txt txt-file) (markup txt))))
       (cond
         ((and r (equalp json r))
          (unless quiet
