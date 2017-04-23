@@ -16,8 +16,8 @@
 
    ;; API
    :defparser
-   :defparserfun
-   :value
+   :defterm
+   :defparserfun ;; Not clear this needs to be public.
 
    ;; Parser functions
    :!
@@ -25,13 +25,11 @@
    :any-char
    :counted
    :eof
-   :look-ahead
    :many
    :many1
-   :not-char
    :optional
+   :peek
    :text
-   :try
 
    ;; Tracing
    :tracing
