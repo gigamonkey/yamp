@@ -11,9 +11,8 @@
 they should be provided via the SUBDOCS keyword arg. Or they can be specified in
 the modeline as a comma-delimited list in the value of the 'subdoc' file
 variable."
-  (let ((text (detab text))) ;; This actually only currently works for string input
-    (multiple-value-bind (ok r) (markup-lang (cons text 0))
-      (and ok r))))
+  (multiple-value-bind (ok r) (markup-lang (cons (detab text) 0))
+    (and ok r)))
 
 (defparser markup-lang (&state subdocs (indent 0) (so-far 0) (subdoc-level 0))
 
@@ -83,10 +82,9 @@ variable."
    element)
 
   (linkdef
-   (-> (between "[" "]" (text-until "]")) name)
-   " "
-   (=> (between "<" ">" (text-until ">")) `(:link_def (:link ,name) (:url ,_)))
-   (or newline blank))
+   "[" (-> (text-until "]") name) "] <" (-> (text-until ">") url) ">"
+   (or newline blank)
+    `(:link_def (:link ,name) (:url ,url)))
 
   (section-divider whitespace "§" blank `(:section "§"))
 
@@ -113,22 +111,15 @@ variable."
    (=> (optional link-key) `(:link ,@contents ,@(if _ (list `(:key ,_)))))
    "]")
 
-  (link-contents
-   (many1 (or (text-until (or tag-open "|" "]")) tagged-text)))
+  (link-contents (many1 (or (text-until (or tag-open "|" "]")) tagged-text)))
 
-  (link-key
-   "|" (text (many1 (not-char "]"))))
+  (link-key "|" (text (many1 (not-char "]"))))
 
-  (escaped-char
-   (and "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<)))
+  (escaped-char (and "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<)))
 
   ((unescaped p) (! escaped-char) (match p))
 
-  (newline
-   (! blank)
-   newline-char
-   indentation
-   '#\Space)
+  (newline (! blank) newline-char indentation '#\Space)
 
   (newline-char (setf so-far 0) #\Newline)
 
@@ -146,8 +137,7 @@ variable."
    (=> (many element)) eod
    (decf subdoc-level))
 
-  (simple-contents
-   (many1 (or (text-until (or tag-open "}")) tagged-text)))
+  (simple-contents (many1 (or (text-until (or tag-open "}")) tagged-text)))
 
   (name (=> (text (many1 (? any-char #'alpha-char-p))) (keywordize _)))
 
@@ -179,24 +169,16 @@ variable."
    (decf indent n))
 
   ((text-until p)
-   (=> (many1 (and (! p) (or escaped-char newline plain-char))) (format nil "~{~a~}" _)))
+   (=> (many1 (and (! p) (or escaped-char newline plain-char))) (to-string _)))
 
   ((not-char p) (and (! p) any-char))
 
-  ((in-subdoc p1 p2)
-   (if (> subdoc-level 0) (match p1) (match p2)))
-
-  ((between start end p)
-   (match start)
-   (=> (match p))
-   (match end)))
+  ((in-subdoc p1 p2) (if (> subdoc-level 0) (match p1) (match p2))))
 
 
-;;; Utility functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Utility functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defgeneric detab (s))
-
-(defmethod detab ((s string))
+(defun detab (s)
   "Convert tab characters to eight spaces."
   (with-output-to-string (out)
     (loop for c across s
@@ -204,7 +186,7 @@ variable."
               (dotimes (i 8) (write-char #\Space out))
               (write-char c out)))))
 
-(defmethod detab ((s stream)) s) ;; FIXME: this obviously needs to do something
+(defun to-string (chars) (concatenate 'string chars))
 
 (defun combine-verbatim (lines)
   "Combine the lines from parsing a verbatim section into a single string."
