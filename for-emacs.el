@@ -1,20 +1,20 @@
-(defun markup-autohtml ()
+(defun markup-autogenerate-html ()
   (interactive)
   (add-hook 'after-save-hook #'markup-generate-html nil t))
 
 (defun markup-generate-html ()
+  (interactive)
   (cond
-   ((slime-connected-p)
-    (cond
-     ((markup-yamp-exists)
-      (let ((resp (slime-eval `(com.gigamonkeys.yamp::generate-html ,(buffer-file-name)))))
-        (if resp
-          (message "Generated html.")
-        (message "Problem generating html."))))
-     (t
-      (message "Lisp connected but YAMP not loaded."))))
-   (t
-    (message "Not connected to Lisp. Can't generate html."))))
+   ((not (slime-connected-p))
+    (message "SLIME not connected to Lisp. Can't generate html."))
+   ((not (markup-yamp-exists))
+    (message "SLIME connected but YAMP not loaded. Can't generate html."))
+   ((not (markup-send-slime-request))
+    (message "Problem generating html."))
+   (t (message "Generated html."))))
 
 (defun markup-yamp-exists ()
   (slime-eval '(cl:not (cl:not (cl:find-package "COM.GIGAMONKEYS.YAMP")))))
+
+(defun markup-send-slime-request ()
+  (slime-eval `(com.gigamonkeys.yamp::generate-html ,(buffer-file-name))))
