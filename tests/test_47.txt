@@ -1,3 +1,5 @@
+-*- subdocs: note; -*-
+
 Regular paragraph.
 
 ## foo

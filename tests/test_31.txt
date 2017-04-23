@@ -1,3 +1,5 @@
+-*- subdocs: note; -*-
+
 This is a regular paragraph.\note{This is a note with a verbatim section:
 
      Here is the verbatim section with some extra space on the first line

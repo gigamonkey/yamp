@@ -1,3 +1,5 @@
+-*- subdocs: note; -*-
+
 This is a paragraph\note{This is an inline note.} blah blah blah.
 
 This is another paragraph.\note{This is a note.
@@ -45,4 +47,3 @@ That has its own paragraphs.
   # That end the note
 
 } And this is the rest of the sixth main paragraph.
-

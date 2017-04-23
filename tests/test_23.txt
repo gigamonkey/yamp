@@ -1,4 +1,5 @@
+-*- subdocs: note,comment; -*-
+
 This is a regular paragraph.\comment{This is a comment}\note{This is a note}
 
 This is a paragraph.\note{This is a note.\comment{With a comment in it}}
-

@@ -1,4 +1,4 @@
--*- mode: markup; -*-
+-*- mode: markup; subdocs: note; -*-
 
 * Code Challenge: Markup
 
@@ -58,7 +58,7 @@ Your challenge, should you choose to accept it, is to provide:
     XML according to the “Trivial XML backend” section of the
     spec.\note{We don’t use XML because we have any great love for it
     but because it is a reasonable lowest-common-denominator format.}
-  
+
   # The source code to a driver program that, given the name of a
     file, parses the file and then generates a corresponding XML file.
 

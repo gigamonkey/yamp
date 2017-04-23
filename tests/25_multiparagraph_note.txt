@@ -1,3 +1,5 @@
+-*- subdocs: note; -*-
+
 This is a regular paragraph.\note{This is an embedded note.
 
 It has two paragraphs.} Here's the rest of the outer paragraph.

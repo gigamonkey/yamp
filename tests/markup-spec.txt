@@ -1,4 +1,4 @@
--*- mode: markup; -*-
+-*- mode: markup; subdocs: note; -*-
 
 * Markup Specification
 
@@ -260,7 +260,3 @@ maps to (indentation for clarity):
      <h2>Header 2</h2>
      <p>Regular paragraph. With <i>italic</i> text.</p>
    </body>
-
-
-
-   
