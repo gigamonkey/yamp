@@ -4,7 +4,6 @@
 ;; compiled to HTML on save. Obviously requires Lisp to be started and
 ;; the code to have been loaded.
 
-
 (defun generate-html (file)
   (with-output-to-file (out (make-pathname :type "html" :defaults file))
     (monkeylib-text-output:with-text-output (out)
