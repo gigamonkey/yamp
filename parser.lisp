@@ -105,7 +105,7 @@ binding."
       ((parser-call-p form names)  (compile-parser-call (mklist form) input names state))
       ((stringp form)              (compile-string form input))
       ((characterp form)           (compile-character form input))
-      (t                           `(good ,form ,input)))))
+      (t                           `(values t ,form ,input)))))
 
 (defun compile-and (body input names state)
   "Compile the forms in an AND so that the AND matches if each of the elements
@@ -134,7 +134,9 @@ matches in sequence."
   "Rewrite the list of forms to be compiled into a AND so that a (=> ...) form
 will have its result returned as the result of the AND. If the => form specifies
 a value expression it can refer to the value matched by the parser via the
-variable _. Otherwise the value of the parser is returned by the AND."
+variable _. Otherwise the value of the parser wrapped in the => is returned by
+the AND. If there is no => form in the AND, then the value of the AND is the
+value of the last expression."
   (let (variables result)
     (flet ((rewrite (x)
              (cond
@@ -154,10 +156,9 @@ variable _. Otherwise the value of the parser is returned by the AND."
   (let ((state-bindings (save-state-bindings state)))
     (with-gensyms (ok result next-input or good)
       (flet ((comp (x)
-               `(cond
-                  ((setf (values ,ok ,result ,next-input) ,(compile-form x input names state))
-                   (go ,good))
-                  (t ,@(restore-state state-bindings)))))
+               `(if (setf (values ,ok ,result ,next-input) ,(compile-form x input names state))
+                    (go ,good)
+                    (progn ,@(restore-state state-bindings)))))
         `(block ,or
            (let (,@state-bindings ,ok ,result ,next-input)
              (tagbody
