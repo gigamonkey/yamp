@@ -21,7 +21,7 @@ backtrack when the parser does."
      ,(compile-parser name args body)))
 
 (defmacro defterm (name (&rest args) &body body)
-  "Define a parser function using the same language as DEFPARSER."
+  "Define a stand-alone parser function using the same language as DEFPARSER."
   (multiple-value-bind (docstring body) (extract-docstring body)
     (with-gensyms (input)
       `(progn
@@ -29,7 +29,7 @@ backtrack when the parser does."
            (setf (get ',name 'parser-function) t))
          (defun ,name (,@args ,input)
            ,@(when docstring (list docstring))
-           ,(compile-and body input () ()))))))
+           ,(compile-and body input nil nil))))))
 
 ;;; Compiler ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -53,6 +53,7 @@ backtrack when the parser does."
                      (,(first names) ,@args ,input)))))))))))
 
 (defun extract-docstring (body)
+  "Extract an optional docstring from the body of a macro form."
   (if (and (consp body) (stringp (first body)))
       (values (first body) (rest body))
       (values nil body)))
@@ -101,7 +102,7 @@ binding."
       ((form-p 'if form)           (compile-if (cdr form) #'self))
       ((form-p 'match form)        (compile-match (cadr form) input))
       ((form-p 'trace form)        (compile-trace form #'self))
-      ((parser-call-p form names)  (compile-parser-call form input names state))
+      ((parser-call-p form names)  (compile-parser-call (mklist form) input names state))
       ((stringp form)              (compile-string form input))
       ((characterp form)           (compile-character form input))
       (t                           `(good ,form ,input)))))
@@ -176,44 +177,35 @@ variable _. Otherwise the value of the parser is returned by the AND."
   (funcall comp `(tracer ,(cadr form) ',(cadr form))))
 
 (defun compile-parser-call (exp input names state)
-  (destructuring-bind (name &rest args) (rewrite-form exp names)
-    (flet ((comp (x) (compile-parser-argument x names state)))
-      `(,name ,@(mapcar #'comp args) ,input))))
+  "Compile a call to a parser function. Arguments are evaluated slightly
+differently than forms appearing as grammar expressions: grammar expressions are
+turned into a thunk so the parser function can invoke them as needed while IF
+and TRACE forms have their parts compiled. All other values are passed through
+as plain Lisp values."
+  (destructuring-bind (name &rest args) exp
+    (labels ((compile-arg (form)
+               (cond
+                 ((or
+                   (parser-call-p form names)
+                   (form-p 'and form)
+                   (form-p 'or form)
+                   (stringp form)
+                   (characterp form))
+                  (with-gensyms (input)
+                    (thunkify (compile-form form input names state) input names)))
 
-(defun compile-parser-argument (form names state)
-  "Compile a form appearing as an argument to a parser function."
-  (with-gensyms (input)
-    (labels ((self (x) (compile-parser-argument x names state)))
-      (cond
-        ((or
-          (parser-call-p form names)
-          (form-p 'and form)
-          (form-p 'or form)
-          (stringp form)
-          (characterp form))
-         (thunkify (compile-form form input names state) input names))
+                 ((form-p 'if form) (compile-if (cdr form) #'compile-arg))
+                 ((form-p 'trace form) (compile-trace form #'compile-arg))
+                 (t form))))
 
-        ((form-p 'if form) (compile-if (cdr form) #'self))
-        ((form-p 'trace form) (compile-trace form #'self))
-        (t form)))))
+      `(,name ,@(mapcar #'compile-arg args) ,input))))
 
 (defun thunkify (x input names)
-  (if (one-arg-parser-call-p x names) `#',(car x) `(lambda (,input) ,x)))
-
-(defun one-arg-parser-call-p (exp names)
-  "Expression is a call to a grammar function and the only arguments required
-are the ones that will be passed by anyone invoking a grammar function, i.e. the
-input. N.B. the length test depends, obviously, on the number of standard
-arguments which used to be two (text and position) and is now one (combined
-input object)."
-  (and (consp exp) (grammar-p (car exp) names) (= (length exp) 2)))
-
-(defun rewrite-form (form names)
-  "Rewrite bare symbols naming parser productions or parser functions into
-cannonical list from."
-  (cond
-    ((and (symbolp form) (grammar-p form names)) (list form))
-    (t form)))
+  "Slight optimization for the case where we just have a parser function being
+called with the input as its only argument."
+  (if (and (consp x) (grammar-p (car x) names) (= (length x) 2))
+      `#',(car x)
+      `(lambda (,input) ,x)))
 
 (defun compile-string (str input) `(matching-string ,str ,(length str) ,input))
 
