@@ -29,7 +29,7 @@ backtrack when the parser does."
            (setf (get ',name 'parser-function) t))
          (defun ,name (,@args ,input)
            ,@(when docstring (list docstring))
-           ,(compile-and body input nil nil))))))
+           ,(compile-and body input (list name) nil))))))
 
 ;;; Compiler ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -39,7 +39,7 @@ backtrack when the parser does."
            (names (mapcar #'caar productions)))
       (multiple-value-bind (args initial-state) (extract-state-variables arglist)
         (let ((state (append args (mapcar #'car initial-state))))
-          (flet ((comp (p) (compile-production p names state)))
+          (flet ((comp (p) (compile-production p (cons name names) state)))
             (with-gensyms (input)
               `(defun ,name (,@args ,input)
                  ,@(when docstring (list docstring))
@@ -346,10 +346,6 @@ values returned by P."
     (declare (ignore r))
     (when ok
       (good (gettext input next-input) next-input))))
-
-(defterm counted (n p)
-  "Match P N times. Return a list of values matched by P."
-  (if (zerop n) nil (and (-> (match p) first) (=> (counted (1- n) p) `(,first ,@_)))))
 
 ;;; Tracing helpers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
