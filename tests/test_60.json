@@ -1,0 +1,4 @@
+["body", ["p", "Regular paragraph one."], ["blockquote", ["p", "Blockquote"]],
+ ["p", "Regular paragraph two."],
+ ["blockquote", ["section", ["p", "Section in blockquote"]]],
+ ["p", "Regular paragraph three."]]

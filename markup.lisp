@@ -40,9 +40,11 @@ variable."
    (=> paragraph-text `(,(keywordize (format nil "H~d" (length stars))) ,@_)))
 
   (section
-   "## " (-> name name) (many1 eol)
-   (=> (many (and (! "##.") element)) `(,name ,@_))
-   "##." blank)
+   "## " (-> name name) blank
+   (=> (many (and (! end-section) element)) `(,name ,@_))
+   end-section)
+
+  (end-section indentation "##." blank)
 
   (verbatim (=> (indented 3 verbatim-text) `(:pre ,_)))
 
@@ -79,7 +81,7 @@ variable."
 
   (blockquote-element
    (! (and (counted 3 #\Space) (not-char #\Space)))
-   element)
+   indentation element)
 
   (linkdef
    "[" (-> (text-until "]") name) "] <" (-> (text-until ">") url) ">"
@@ -113,15 +115,21 @@ variable."
 
   (link-contents (many1 (or (text-until (or tag-open "|" "]")) tagged-text)))
 
-  (link-key "|" (text (many1 (not-char "]"))))
+  (link-key "|" (text-until "]"))
 
   (escaped-char (and "\\" (or #\\ #\{ #\} #\* #\# #\- #\[ #\] #\% #\| #\<)))
 
   ((unescaped p) (! escaped-char) (match p))
 
-  (newline (! blank) newline-char indentation '#\Space)
-
   (newline-char (setf so-far 0) #\Newline)
+
+  (eol whitespace newline-char)
+
+  (newline (! blank) eol indentation '#\Space)
+
+  (blank
+   (or eol eod)
+   (or (many1 eol) eod))
 
   (plain-char (in-subdoc (not-char "}") any-char))
 
@@ -147,15 +155,9 @@ variable."
    (incf indent n)
    (setf so-far indent))
 
-  (eol whitespace newline-char)
-
   (eod (in-subdoc end-of-subdoc eof))
 
   (end-of-subdoc (peek "}"))
-
-  (blank
-   (or eol eod)
-   (or (many1 eol) eod))
 
   (indentation
    (counted (- indent so-far) #\Space)
