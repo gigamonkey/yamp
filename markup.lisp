@@ -25,13 +25,13 @@ variable."
    indentation
    (or header
        section
+       section-divider
        verbatim
        ordered-list
        unordered-list
        definition-list
        blockquote
        linkdef
-       section-divider
        paragraph))
 
   (header
@@ -71,7 +71,7 @@ variable."
   (term
    indentation "% "
    (=> (many1 (or (text-until (or tag-open " %")) tagged-text)) `(:dt ,@_))
-   " %" eol)
+   " %" (or blank eol))
 
   (definition
    (=> (many1 (and indentation (! "% ") paragraph)) `(:dd ,@_)))
@@ -84,7 +84,7 @@ variable."
    indentation element)
 
   (linkdef
-   "[" (-> (text-until "]") name) "] <" (-> (text-until ">") url) ">"
+   "[" (-> (text-until "]") name) "]" whitespace "<" (-> (text-until ">") url) ">"
    (or newline blank)
     `(:link_def (:link ,name) (:url ,url)))
 
