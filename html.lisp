@@ -6,16 +6,30 @@
 
 (in-package :com.gigamonkeys.yamp)
 
+(defun generate-html (file)
+  "Generate HTML for the markup file in the same location except with an .html
+extension."
+  (with-output-to-file (out (make-pathname :type "html" :defaults file))
+    (monkeylib-text-output:with-text-output (out)
+      (monkeylib-html:emit-html
+       (markup-html
+        (markup (file-text file))))))
+  t)
+
 (defun markup-html (doc &key title (style "style.css") script)
   (funcall
    (>>>
     #'links
     #'endnotes
     (rewriter :img #'image)
+    (rewriter-if #'formatted-code-section #'formatted-code)
     #'htmlize
     (entitle title)
     (stylize style)
-    (enscript script))
+    (enscript script)
+    (rewriter :section-marker #'divver)
+    (rewriter :section #'section-to-div)
+    )
    doc))
 
 (defun links (doc)
@@ -50,7 +64,7 @@ a doctype and proper charset."
     (:html
       (:head
        (:meta :charset "UTF-8"))
-      ,doc)))
+      (:body ((:div :id "container") ,@(rest doc))))))
 
 (defun entitle (title)
   "Add a :TITLE element to :HEAD based on the contents of the first :H1"
@@ -146,3 +160,16 @@ removed."
                  (string (write-string x s))
                  (cons (mapcar #'walk x)))))
       (walk sexp))))
+
+
+
+(defun formatted-code-section (expr)
+  (and
+   (consp expr)
+   (eql (first expr) :section)
+   (eql (first (second expr)) :formattedcode)))
+
+(defun formatted-code (expr)
+  (destructuring-bind (section (formattedcode (pre text))) expr
+    (declare (ignore section formattedcode pre))
+    `(:pre ,@(nth-value 1 (markup-lite (cons text 0))))))

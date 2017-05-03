@@ -41,7 +41,7 @@ variable."
 
   (section
    "## " (-> name name) blank
-   (=> (many (and (! end-section) element)) `(,name ,@_))
+   (=> (many (and (! end-section) element)) `(:section (,name ,@_)))
    end-section)
 
   (end-section indentation "##." blank)
@@ -88,7 +88,7 @@ variable."
    (or newline blank)
     `(:link_def (:link ,name) (:url ,url)))
 
-  (section-divider whitespace "§" blank `(:section "§"))
+  (section-divider whitespace "§" blank `(:section-marker "§"))
 
   (paragraph (=> paragraph-text `(:p ,@_)))
 

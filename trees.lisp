@@ -28,6 +28,14 @@ replaces them with the result of FN."
                  tree)))
     #'walk))
 
+(defun rewriter-if (p fn)
+  (labels ((walk (tree)
+             (if (consp tree)
+                 (mapcar #'walk (if (funcall p tree) (funcall fn tree) tree))
+                 tree)))
+    #'walk))
+
+
 (defun deleter (tag)
   "A function that deletes all subtrees tagged with TAG."
   (labels ((walk (tree)
@@ -51,3 +59,6 @@ replaces them with the result of FN."
 (defun divver (tree)
   "Replace tree with a :DIV with a class attribute from the original tag."
   `((:div :class ,(string-downcase (first tree))) ,@(rest tree)))
+
+(defun section-to-div (tree)
+  (divver (second tree)))
