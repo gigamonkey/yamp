@@ -29,7 +29,7 @@ backtrack when the parser does."
            (setf (get ',name 'parser-function) t))
          (defun ,name (,@args ,input)
            ,@(when docstring (list docstring))
-           ,(compile-and body input (list name) nil))))))
+           ,(new-compile-and body input (list name) nil))))))
 
 ;;; Compiler ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -91,14 +91,14 @@ parser function."
 binding."
   (with-gensyms (input)
     (destructuring-bind ((name &rest args) &rest body) p
-      `(,name (,@args ,input) ,(compile-and body input names state)))))
+      `(,name (,@args ,input) ,(new-compile-and body input names state)))))
 
 (defun compile-form (form input names state)
   "Compile a single parser form as it would appear in an AND or OR."
   (labels ((self (x) (compile-form x input names state)))
     (cond
-      ((form-p 'and form)          (compile-and (rest form) input names state))
-      ((form-p 'or form)           (compile-or (rest form) input names state))
+      ((form-p 'and form)          (new-compile-and (rest form) input names state))
+      ((form-p 'or form)           (new-compile-or (rest form) input names state))
       ((form-p 'if form)           (compile-if (cdr form) #'self))
       ((form-p 'match form)        (compile-match (cadr form) input))
       ((form-p 'trace form)        (compile-trace form #'self))
@@ -106,6 +106,29 @@ binding."
       ((stringp form)              (compile-string form input))
       ((characterp form)           (compile-character form input))
       (t                           `(values t ,form ,input)))))
+
+(defun new-compile-form (form input names state)
+  "Compile a single parser form as it would appear in an AND or OR."
+  (let ((state-bindings (save-state-bindings state)))
+    (flet ((self (x) (new-compile-form x input names state)))
+      (with-gensyms (ok result next-input)
+        `(let (,@state-bindings)
+           (multiple-value-bind (,ok ,result ,next-input)
+               ,(cond
+                  ((form-p 'and form)          (new-compile-and (rest form) input names state))
+                  ((form-p 'or form)           (new-compile-or (rest form) input names state))
+                  ((form-p 'if form)           (compile-if (cdr form) #'self))
+                  ((form-p 'match form)        (compile-match (cadr form) input))
+                  ((form-p 'trace form)        (compile-trace form #'self))
+                  ((parser-call-p form names)  (compile-parser-call (mklist form) input names state))
+                  ((stringp form)              (compile-string form input))
+                  ((characterp form)           (compile-character form input))
+                  (t                           `(values t ,form (copy-input ,input))))
+             (when (eql ,next-input ,input)
+               ,@(restore-state state-bindings))
+             (if ,ok
+                 (values ,ok ,result ,next-input)
+                 (progn ,@(restore-state state-bindings) nil))))))))
 
 (defun compile-and (body input names state)
   "Compile the forms in an AND so that the AND matches if each of the elements
@@ -129,6 +152,23 @@ matches in sequence."
                 ,fail
                   ,@(restore-state state-bindings)
                   (return-from ,and nil)))))))))
+
+(defun new-compile-and (body input names state)
+  "Compile the forms in an AND so that the AND matches if each of the elements
+matches in sequence."
+  (with-gensyms (ok result)
+    (labels ((inner (exprs)
+               (if exprs
+                   (multiple-value-bind (form var) (form-and-variable (car exprs))
+                     `(multiple-value-bind (,ok ,(or var result) ,input)
+                          ,(new-compile-form form input names state)
+                        ,@(when (not var) `((declare (ignorable ,result))))
+                        (when ,ok ,(inner (rest exprs)))))
+                   `(values ,ok ,result ,input))))
+      (inner (rewrite-and-body body)))))
+
+(defun form-and-variable (exp)
+  (if (form-p '-> exp) (values-list (rest exp)) (values exp nil)))
 
 (defun rewrite-and-body (body)
   "Rewrite the list of forms to be compiled into a AND so that a (=> ...) form
@@ -167,6 +207,24 @@ value of the last expression."
                 ,good
                 (return-from ,or (values ,ok ,result ,next-input)))))))))
 
+(defun new-compile-or (body input names state)
+  (let ((state-bindings (save-state-bindings state)))
+    (with-gensyms (ok result next-input restore-state)
+      (labels ((inner (exprs)
+                 (if exprs
+                     `(multiple-value-bind (,ok ,result ,next-input)
+                          ,(new-compile-form (car exprs) input names state)
+                        (declare (ignorable ,result))
+                        (if ,ok
+                            (values ,ok ,result ,next-input)
+                            (progn
+                              (,restore-state)
+                              ,(inner (rest exprs)))))
+                     nil)))
+        `(let (,@state-bindings)
+           (flet ((,restore-state () ,@(restore-state state-bindings)))
+             ,(inner body)))))))
+
 (defun compile-if (body comp)
   (destructuring-bind (test then else) body
     `(if ,test ,(funcall comp then) ,(funcall comp else))))
@@ -193,7 +251,7 @@ as plain Lisp values."
                    (stringp form)
                    (characterp form))
                   (with-gensyms (input)
-                    (thunkify (compile-form form input names state) input names)))
+                    (thunkify (new-compile-form form input names state) input names)))
 
                  ((form-p 'if form) (compile-if (cdr form) #'compile-arg))
                  ((form-p 'trace form) (compile-trace form #'compile-arg))
@@ -238,6 +296,9 @@ called with the input as its only argument."
 (defgeneric gettext (input end)
   (:documentation "Get the text between START and END." ))
 
+(defgeneric copy-input (input)
+  (:documentation "Make a copy of input that is not EQL to the current input."))
+
 (defgeneric input-position (input)
   (:documentation "Current position within the input. This is only used for
   informational purposes in tracing output."))
@@ -267,6 +328,8 @@ called with the input as its only argument."
 (defmethod gettext ((input cons) end)
   (destructuring-bind (text . position) input
     (subseq text position (cdr end))))
+
+(defmethod copy-input (input) (copy-list input))
 
 (defmethod input-position ((input cons)) (cdr input))
 
