@@ -29,7 +29,7 @@ backtrack when the parser does."
            (setf (get ',name 'parser-function) t))
          (defun ,name (,@args ,input)
            ,@(when docstring (list docstring))
-           ,(new-compile-and body input (list name) nil))))))
+           ,(compile-and body input (list name) nil))))))
 
 ;;; Compiler ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -91,32 +91,18 @@ parser function."
 binding."
   (with-gensyms (input)
     (destructuring-bind ((name &rest args) &rest body) p
-      `(,name (,@args ,input) ,(new-compile-and body input names state)))))
+      `(,name (,@args ,input) ,(compile-and body input names state)))))
 
 (defun compile-form (form input names state)
   "Compile a single parser form as it would appear in an AND or OR."
-  (labels ((self (x) (compile-form x input names state)))
-    (cond
-      ((form-p 'and form)          (new-compile-and (rest form) input names state))
-      ((form-p 'or form)           (new-compile-or (rest form) input names state))
-      ((form-p 'if form)           (compile-if (cdr form) #'self))
-      ((form-p 'match form)        (compile-match (cadr form) input))
-      ((form-p 'trace form)        (compile-trace form #'self))
-      ((parser-call-p form names)  (compile-parser-call (mklist form) input names state))
-      ((stringp form)              (compile-string form input))
-      ((characterp form)           (compile-character form input))
-      (t                           `(values t ,form ,input)))))
-
-(defun new-compile-form (form input names state)
-  "Compile a single parser form as it would appear in an AND or OR."
   (let ((state-bindings (save-state-bindings state)))
-    (flet ((self (x) (new-compile-form x input names state)))
+    (flet ((self (x) (compile-form x input names state)))
       (with-gensyms (ok result next-input)
         `(let (,@state-bindings)
            (multiple-value-bind (,ok ,result ,next-input)
                ,(cond
-                  ((form-p 'and form)          (new-compile-and (rest form) input names state))
-                  ((form-p 'or form)           (new-compile-or (rest form) input names state))
+                  ((form-p 'and form)          (compile-and (rest form) input names state))
+                  ((form-p 'or form)           (compile-or (rest form) input names state))
                   ((form-p 'if form)           (compile-if (cdr form) #'self))
                   ((form-p 'match form)        (compile-match (cadr form) input))
                   ((form-p 'trace form)        (compile-trace form #'self))
@@ -133,35 +119,12 @@ binding."
 (defun compile-and (body input names state)
   "Compile the forms in an AND so that the AND matches if each of the elements
 matches in sequence."
-  (with-gensyms (ok result next-input and fail)
-    (labels ((wrap (x var)
-               `(or
-                 (setf (values ,ok ,var ,next-input) ,(compile-form x next-input names state))
-                 (go ,fail)))
-             (comp (x)
-               (cond
-                 ((form-p '-> x) (wrap (second x) (third x)))
-                 (t (wrap x result)))))
-      (let ((state-bindings (save-state-bindings state)))
-        (multiple-value-bind (body variables) (rewrite-and-body body)
-          `(block ,and
-             (let (,@state-bindings ,@variables ,ok ,result (,next-input ,input))
-               (tagbody
-                  ,@(mapcar #'comp body)
-                  (return-from ,and (values ,ok ,result ,next-input))
-                ,fail
-                  ,@(restore-state state-bindings)
-                  (return-from ,and nil)))))))))
-
-(defun new-compile-and (body input names state)
-  "Compile the forms in an AND so that the AND matches if each of the elements
-matches in sequence."
   (with-gensyms (ok result)
     (labels ((inner (exprs)
                (if exprs
                    (multiple-value-bind (form var) (form-and-variable (car exprs))
                      `(multiple-value-bind (,ok ,(or var result) ,input)
-                          ,(new-compile-form form input names state)
+                          ,(compile-form form input names state)
                         ,@(when (not var) `((declare (ignorable ,result))))
                         (when ,ok ,(inner (rest exprs)))))
                    `(values ,ok ,result ,input))))
@@ -193,37 +156,14 @@ value of the last expression."
         (values (if result `(,@new-body ,result) body) variables)))))
 
 (defun compile-or (body input names state)
-  (let ((state-bindings (save-state-bindings state)))
-    (with-gensyms (ok result next-input or good)
-      (flet ((comp (x)
-               `(if (setf (values ,ok ,result ,next-input) ,(compile-form x input names state))
-                    (go ,good)
-                    (progn ,@(restore-state state-bindings)))))
-        `(block ,or
-           (let (,@state-bindings ,ok ,result ,next-input)
-             (tagbody
-                ,@(mapcar #'comp body)
-                (return-from ,or nil)
-                ,good
-                (return-from ,or (values ,ok ,result ,next-input)))))))))
-
-(defun new-compile-or (body input names state)
-  (let ((state-bindings (save-state-bindings state)))
-    (with-gensyms (ok result next-input restore-state)
-      (labels ((inner (exprs)
-                 (if exprs
-                     `(multiple-value-bind (,ok ,result ,next-input)
-                          ,(new-compile-form (car exprs) input names state)
-                        (declare (ignorable ,result))
-                        (if ,ok
-                            (values ,ok ,result ,next-input)
-                            (progn
-                              (,restore-state)
-                              ,(inner (rest exprs)))))
-                     nil)))
-        `(let (,@state-bindings)
-           (flet ((,restore-state () ,@(restore-state state-bindings)))
-             ,(inner body)))))))
+  (with-gensyms (ok result next-input)
+    (if body
+        `(multiple-value-bind (,ok ,result ,next-input)
+             ,(compile-form (car body) input names state)
+           (if ,ok
+               (values ,ok ,result ,next-input)
+               ,(compile-or (rest body) input names state)))
+        nil)))
 
 (defun compile-if (body comp)
   (destructuring-bind (test then else) body
@@ -251,7 +191,7 @@ as plain Lisp values."
                    (stringp form)
                    (characterp form))
                   (with-gensyms (input)
-                    (thunkify (new-compile-form form input names state) input names)))
+                    (thunkify (compile-form form input names state) input names)))
 
                  ((form-p 'if form) (compile-if (cdr form) #'compile-arg))
                  ((form-p 'trace form) (compile-trace form #'compile-arg))
