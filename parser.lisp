@@ -110,11 +110,10 @@ binding."
                   ((stringp form)              (compile-string form input))
                   ((characterp form)           (compile-character form input))
                   (t                           `(values t ,form (copy-input ,input))))
-             (when (eql ,next-input ,input)
+             (when (or (eql ,next-input ,input) (not ,ok))
                ,@(restore-state state-bindings))
-             (if ,ok
-                 (values ,ok ,result ,next-input)
-                 (progn ,@(restore-state state-bindings) nil))))))))
+             (when ,ok
+               (values ,ok ,result ,next-input))))))))
 
 (defun compile-and (body input names state)
   "Compile the forms in an AND so that the AND matches if each of the elements
