@@ -25,8 +25,7 @@
   (whitespace (many (or #\Space #\Tab #\Newline))))
 
 (defun combine (op first rest)
-  (if rest
-      (if (and (consp rest) (eql (car rest) op))
-          `(,op ,first ,@(cdr rest))
-          `(,op ,first ,rest))
-      first))
+  (cond
+    ((null rest) first)
+    ((and (consp rest) (eql (car rest) op)) `(,op ,first ,@(cdr rest)))
+    (t `(,op ,first ,rest))))
