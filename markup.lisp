@@ -24,6 +24,7 @@ variable."
   (element
    indentation
    (or header
+       section-one-line
        section
        section-divider
        verbatim
@@ -38,6 +39,14 @@ variable."
    (-> (many1 "*") stars)
    whitespace
    (=> paragraph-text `(,(keywordize (format nil "H~d" (length stars))) ,@_)))
+
+  (section-one-line
+   "## " (-> name name) " "
+   (=> one-line-text `(:section (,name ,@_)))
+   " ##." (or blank eol))
+
+  (one-line-text
+   (=> (many1 (or (text-until (or " ##." tag-open "[")) tagged-text linkref))))
 
   (section
    "## " (-> name name) blank
@@ -145,7 +154,7 @@ variable."
    (=> (many element)) eod
    (decf subdoc-level))
 
-  (simple-contents (many1 (or (text-until (or tag-open "}")) tagged-text)))
+  (simple-contents (many1 (or (text-until (or tag-open "[" "}")) tagged-text linkref)))
 
   (name (=> (text (many1 (? any-char #'alpha-char-p))) (keywordize _)))
 
