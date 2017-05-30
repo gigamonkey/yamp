@@ -109,7 +109,10 @@ binding."
                   ((parser-call-p form names)  (compile-parser-call (mklist form) input names state))
                   ((stringp form)              (compile-string form input))
                   ((characterp form)           (compile-character form input))
-                  (t                           `(values t ,form (copy-input ,input))))
+
+                  ;; N.B. we copy-input here to ensure that lisp forms do not
+                  ;; have their state rewound.
+                  (t `(values t ,form (copy-input ,input))))
              (when (or (eql ,next-input ,input) (not ,ok))
                ,@(restore-state state-bindings))
              (when ,ok
@@ -121,7 +124,7 @@ matches in sequence."
   (with-gensyms (ok result)
     (labels ((inner (exprs)
                (if exprs
-                   (multiple-value-bind (form var) (form-and-variable (car exprs))
+                   (multiple-value-bind (form var) (form-and-variable (first exprs))
                      `(multiple-value-bind (,ok ,(or var result) ,input)
                           ,(compile-form form input names state)
                         ,@(when (not var) `((declare (ignorable ,result))))
@@ -178,8 +181,8 @@ value of the last expression."
   "Compile a call to a parser function. Arguments are evaluated slightly
 differently than forms appearing as grammar expressions: grammar expressions are
 turned into a thunk so the parser function can invoke them as needed while IF
-and TRACE forms have their parts compiled. All other values are passed through
-as plain Lisp values."
+and TRACE forms have their parts compiled with this function. All other values
+are passed through as plain Lisp values."
   (destructuring-bind (name &rest args) exp
     (labels ((compile-arg (form)
                (cond
@@ -202,7 +205,7 @@ as plain Lisp values."
   "Slight optimization for the case where we just have a parser function being
 called with the input as its only argument."
   (if (and (consp x) (grammar-p (car x) names) (= (length x) 2))
-      `#',(car x)
+      `(function ,(car x))
       `(lambda (,input) ,x)))
 
 (defun compile-string (str input) `(matching-string ,str ,(length str) ,input))
@@ -216,7 +219,6 @@ called with the input as its only argument."
 
 (defun form-p (what form)
   (and (consp form) (eql (car form) what)))
-
 
 ;;; I/O protocol ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
