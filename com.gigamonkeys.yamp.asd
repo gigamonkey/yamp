@@ -12,6 +12,7 @@
    (:file "trees"       :depends-on ("packages"))
    (:file "html"        :depends-on ("packages" "trees"))
    (:file "markup"      :depends-on ("packages" "parser" "combinators"))
+   (:file "markup-lite" :depends-on ("packages" "parser" "combinators"))
    (:file "math"        :depends-on ("packages" "parser"))
    (:file "math-tests"  :depends-on ("packages" "math"))
    (:file "tests"       :depends-on ("packages" "markup")))
