@@ -9,28 +9,43 @@
 (defun generate-html (file)
   "Generate HTML for the markup file in the same location except with an .html
 extension."
-  (with-output-to-file (out (make-pathname :type "html" :defaults file))
-    (monkeylib-text-output:with-text-output (out)
-      (monkeylib-html:emit-html
-       (markup-html
-        (markup (file-text file))))))
+  (let ((*default-pathname-defaults* (parent-directory file)))
+    (with-output-to-file (out (make-pathname :type "html" :defaults file))
+      (monkeylib-text-output:with-text-output (out)
+        (monkeylib-html:emit-html
+         (markup-html
+          (markup (file-text file)))))))
   t)
 
 (defun markup-html (doc &key title (style "style.css") script)
-  (funcall
-   (>>>
-    #'links
-    #'endnotes
-    (rewriter :img #'image)
-    (rewriter-if #'formatted-code-section #'formatted-code)
-    #'htmlize
-    (entitle title)
-    (stylize style)
-    (enscript script)
-    (rewriter :section-marker #'divver)
-    (rewriter :section #'section-to-div)
-    )
-   doc))
+  (let ((has-tweets (extract :tweet doc)))
+    (funcall
+     (>>>
+      #'links
+      #'endnotes
+      (rewriter :section #'(lambda (x) (if (eql (car (second x)) :tweet) (tweet-by-id (second x)) x)))
+      (rewriter :section #'(lambda (x) (if (eql (car (second x)) :javascript) (script (second x)) x)))
+      (rewriter :section #'(lambda (x) (if (eql (car (second x)) :chart) (chart (second x)) x)))
+      (rewriter :section (if-is-section :include #'include-from-file))
+      (rewriter :img #'image)
+      (rewriter-if #'formatted-code-section #'formatted-code)
+      #'htmlize
+      (entitle title)
+      (stylize style)
+      (enscript script)
+      (enscript "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML" :where :head :async t)
+      (twitter-widget has-tweets)
+      (rewriter :section-marker #'section-marker)
+      (rewriter :section #'section-to-div)
+      )
+     doc)))
+
+(defun if-is-section (tag fn)
+  #'(lambda (tree)
+      (if (eql (car (second tree)) tag)
+          (funcall fn (second tree))
+          tree)))
+
 
 (defun links (doc)
   "Rewrite the doc so :link elements are expanded into :a tags with the
@@ -83,11 +98,33 @@ a doctype and proper charset."
                   `((:style (:noescape ,style)))
                   `((:link :href ,style :rel "stylesheet"))))))
 
-(defun enscript (script)
+(defun enscript (script &key (where :body) (async nil))
   "Add an SCRIPT tag if script is provided."
   (if script
-      (rewriter :body (appending `((:script :src ,script :type "text/javascript"))))
+      (rewriter where (appending `((:script ,@(if async '(:async "async")) :src ,script :type "text/javascript"))))
       #'identity))
+
+(defun script (script)
+  `(:script
+    :src ,(just-text script)
+    :type "text/javascript"
+    :charset "utf-8"))
+
+(defun script/async (script)
+  `(:script
+    :async "async"
+    :src ,(just-text script)
+    :type "text/javascript"
+    :charset "utf-8"))
+
+(defun twitter-widget (has-tweets)
+  (if has-tweets
+      (rewriter :body (appending (list (script/async "https://platform.twitter.com/widgets.js"))))
+      #'identity))
+
+(defun section-marker (x)
+  (declare (ignore x))
+  `(:hr :class "fleuron"))
 
 ;;; Helper functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -161,8 +198,6 @@ removed."
                  (cons (mapcar #'walk x)))))
       (walk sexp))))
 
-
-
 (defun formatted-code-section (expr)
   (and
    (consp expr)
@@ -173,3 +208,42 @@ removed."
   (destructuring-bind (section (formattedcode (pre text))) expr
     (declare (ignore section formattedcode pre))
     `(:pre ,@(nth-value 1 (markup-lite (cons text 0))))))
+
+(defun embedded-tweet (tree)
+  (let ((text (tag-text :text tree))
+        (screenname (tag-text :screenname tree))
+        (handle (tag-text :handle tree))
+        (id (tag-text :id tree))
+        (date (tag-text :date tree)))
+    `(:progn
+       ((:blockquote :class "twitter-tweet" :lang "en")
+        (:p "“" ,text "”")
+        (:noescape "&mdash;")
+        ,screenname "(@" ,handle ") "
+        ((:a :href (:format "https://twitter.com/~a/status/~a" ,handle ,id)) ,date))
+       (:script :async "async" :src "https://platform.twitter.com/widgets.js" :charset "utf-8"))))
+
+(defun tweet-by-id (tree)
+  (let ((filename (make-pathname :defaults (merge-pathnames "tweets/") :name (just-text tree))))
+    `(:noescape ,(file-text filename))))
+
+(defun chart (tree)
+  `(:div :class "chart" :id (:format "chart~a" ,(just-text tree))))
+
+(defun tag-text (tag tree)
+  (mapcan #'just-text (extract tag tree)))
+
+(defun include-from-file (tree)
+  (let* ((text (string-trim " " (just-text tree)))
+         (spc (position #\Space text))
+         (file (subseq text 0 spc))
+         (name (subseq text (1+ spc)))
+         (contents (file-text file))
+         (lines (split-sequence #\Newline contents)))
+    (flet ((start (line) (search (format nil "8<--- ~a" name) line))
+           (end (line) (search "8<----" line)))
+      (let* ((start (cdr (member-if #'start lines)))
+             (end (member-if #'end start)))
+        (if end
+            `(:pre ,(format nil "~{~&~a~}" (ldiff start end)))
+            (error "Coludn't find include section ~a in ~a" name file))))))
