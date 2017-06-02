@@ -97,7 +97,7 @@ variable."
    (or newline blank)
     `(:link_def (:link ,name) (:url ,url)))
 
-  (section-divider whitespace "§" blank `(:section-marker "§"))
+  (section-divider whitespace "§" blank `(:§ "§"))
 
   (paragraph (=> paragraph-text `(:p ,@_)))
 
@@ -154,7 +154,7 @@ variable."
    (=> (many element)) eod
    (decf subdoc-level))
 
-  (simple-contents (many1 (or (text-until (or tag-open "[" "}")) tagged-text linkref)))
+  (simple-contents (many (or (text-until (or tag-open "[" "}")) tagged-text linkref)))
 
   (name (=> (text (many1 (? any-char #'alpha-char-p))) (keywordize _)))
 
