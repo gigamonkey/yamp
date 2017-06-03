@@ -9,12 +9,13 @@
   ((:file "packages")
    (:file "parser"      :depends-on ("packages"))
    (:file "combinators" :depends-on ("packages" "parser"))
-   (:file "trees"       :depends-on ("packages"))
-   (:file "html"        :depends-on ("packages" "trees"))
+   (:file "iso-8601"    :depends-on ("packages" "parser" "combinators"))
    (:file "markup"      :depends-on ("packages" "parser" "combinators"))
    (:file "markup-lite" :depends-on ("packages" "parser" "combinators"))
    (:file "math"        :depends-on ("packages" "parser"))
    (:file "math-tests"  :depends-on ("packages" "math"))
+   (:file "trees"       :depends-on ("packages"))
+   (:file "html"        :depends-on ("packages" "trees"))
    (:file "tests"       :depends-on ("packages" "markup")))
   :depends-on
   (:com.gigamonkeys.json

@@ -47,7 +47,10 @@ replaces them with the result of FN."
 
 (defun appending (contents)
   "A function that appends CONTENTS at the end of an element."
-  (lambda (e) `(,@e ,@contents)))
+  #'(lambda (e) `(,@e ,@contents)))
+
+(defun replacing-with (contents)
+  #'(lambda (e) (declare (ignore e)) contents))
 
 (defun numberer ()
   "Insert an element with a number that increases each time we are called."
@@ -60,5 +63,6 @@ replaces them with the result of FN."
   "Replace tree with a :DIV with a class attribute from the original tag."
   `((:div :class ,(string-downcase (first tree))) ,@(rest tree)))
 
-(defun section-to-div (tree)
-  (divver (second tree)))
+(defun spanner (tree)
+  "Replace tree with a :span with a class attribute from the original tag."
+  `((:span :class ,(string-downcase (first tree))) ,@(rest tree)))

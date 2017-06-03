@@ -42,4 +42,5 @@
    :->
    :=>)
   (:import-from :com.gigamonkeys.macro-utilities :gensyms)
+  (:import-from :monkeylib-text-output :with-text-output)
   (:shadow :!))

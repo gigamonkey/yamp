@@ -10,42 +10,98 @@
   "Generate HTML for the markup file in the same location except with an .html
 extension."
   (let ((*default-pathname-defaults* (parent-directory file)))
-    (with-output-to-file (out (make-pathname :type "html" :defaults file))
-      (monkeylib-text-output:with-text-output (out)
-        (monkeylib-html:emit-html
-         (markup-html
-          (markup (file-text file)))))))
+    (let* ((config (load-config file))
+           (output (first (config :output config)))
+           (output-file
+            (make-pathname
+             :type "html"
+             :defaults (if output (merge-pathnames output file) file))))
+      (with-output-to-file (out (ensure-directories-exist output-file))
+        (with-text-output (out)
+          (monkeylib-html:emit-html
+           (markup-html (markup (file-text file)) config))))))
   t)
 
-(defun markup-html (doc &key title (style "style.css") script)
-  (let ((has-tweets (extract :tweet doc)))
-    (funcall
-     (>>>
-      #'links
-      #'endnotes
-      (rewriter :section #'(lambda (x) (if (eql (car (second x)) :tweet) (tweet-by-id (second x)) x)))
-      (rewriter :section #'(lambda (x) (if (eql (car (second x)) :javascript) (script (second x)) x)))
-      (rewriter :section #'(lambda (x) (if (eql (car (second x)) :chart) (chart (second x)) x)))
-      (rewriter :section (if-is-section :include #'include-from-file))
-      (rewriter :img #'image)
-      (rewriter-if #'formatted-code-section #'formatted-code)
-      #'htmlize
-      (entitle title)
-      (stylize style)
-      (enscript script)
-      (enscript "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML" :where :head :async t)
-      (twitter-widget has-tweets)
-      (rewriter :section-marker #'section-marker)
-      (rewriter :section #'section-to-div)
-      )
-     doc)))
+(defun markup-html (doc config)
+  (let ((has-tweets (extract :tweet doc))
+        (dateline (first (extract :dateline doc))))
+    (destructuring-bind (&key year &allow-other-keys) (parse-iso-8601 (just-text dateline))
+      (let ((config (cons `(:year ,year) config)))
+        (funcall
+         (>>>
+          ;; Massaging the Markup structure into HTML.
+          #'links
+          #'endnotes
+          (rewriter :img #'(lambda (img) `(:img :src ,@(rest img))))
 
-(defun if-is-section (tag fn)
-  #'(lambda (tree)
-      (if (eql (car (second tree)) tag)
-          (funcall fn (second tree))
-          tree)))
+          ;; Special sections specified in config file.
+          (section-rewriter (config :sections config))
 
+          ;; Other sections get turned into divs.
+          (rewriter :section #'(lambda (s) (divver (second s))))
+
+          ;; Section markers
+          (rewriter :§ (replacing-with '(:hr :class "fleuron")))
+
+          ;; Spans.
+          (spans-rewriter (config :spans config))
+
+          ;; Turn into HTML
+          (htmlizer config)
+
+          #'entitle
+          (twitter-widget has-tweets))
+         doc)))))
+
+(defun spans-rewriter (spans)
+  (flet ((apply-spanner (d s) (funcall (rewriter s #'spanner) d)))
+    #'(lambda (doc)
+        (reduce #'apply-spanner spans :initial-value doc))))
+
+(defun section-rewriter (sections)
+  (labels ((apply-section (d s)
+             (destructuring-bind (tag sym) s
+               (funcall (rewriter :section (if-section-p tag (symbol-function sym))) d)))
+           (if-section-p (tag fn)
+             #'(lambda (tree)
+                 (if (eql (car (second tree)) tag) (funcall fn (second tree)) tree))))
+    #'(lambda (doc)
+        (reduce #'apply-section sections :initial-value doc))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Configuration
+
+(defun config (key config) (cdr (assoc key config)))
+
+(defun load-config (filename)
+  (let ((eof '#:eof))
+    (labels ((read-file (f)
+             (with-open-file (in f :if-does-not-exist nil)
+               (when in
+                 (loop for o = (read in nil eof) until (eql o eof) collecting o))))
+             (combine (acc file) (merge-alists acc (read-file file))))
+      (let ((files (list
+                    (make-pathname :name "defaults" :type "config" :defaults (merge-pathnames "config/" filename))
+                    (make-pathname :type "config" :defaults (merge-pathnames "config/" filename)))))
+        (let ((from-files (reduce #'combine files :initial-value ())))
+          (if (config :output from-files)
+              from-files
+              (cons `(:output ,(default-output filename)) from-files)))))))
+
+(defun merge-alists (a1 a2)
+  (flet ((combine (acc next)
+           (destructuring-bind (k . v) next
+             (let ((in-a1 (assoc k acc)))
+               (if in-a1
+                   (cons `(,k ,@(cdr in-a1) ,@v) (remove k acc :key #'car))
+                   (cons `(,k ,@v) acc))))))
+    (nreverse (reduce #'combine a2 :initial-value a1))))
+
+(defun default-output (filename)
+  (merge-pathnames (pathname-as-directory (pathname-name filename)) "web/index"))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Link rewriting
 
 (defun links (doc)
   "Rewrite the doc so :link elements are expanded into :a tags with the
@@ -54,115 +110,6 @@ appropriate link."
     (funcall
      (>>> (deleter :link_def) (rewriter :link (linker linkdefs)))
      doc)))
-
-(defun endnotes (doc)
-  "Rewrite a doc with :note elements converted to endnotes."
-  (if (extract :note doc)
-      (funcall
-       (>>>
-        (rewriter :note (numberer))
-        (lambda (x) `(,@x (:notes ,@(extract :note x))))
-        (rewriter :notes (rewriter :note (>>> #'endnote-backlinker #'divver)))
-        (rewriter :notes #'divver)
-        (rewriter :body (rewriter :note #'endnote-marker)))
-       doc)
-      doc))
-
-(defun image (img)
-  `(:img :src ,@(rest img)))
-
-(defun htmlize (doc)
-  "Wrap the :body we get from the markup parser in a proper HTML5 document with
-a doctype and proper charset."
-  `(:progn
-    (:noescape "<!DOCTYPE html>")
-    (:html
-      (:head
-       (:meta :charset "UTF-8"))
-      (:body ((:div :id "container") ,@(rest doc))))))
-
-(defun entitle (title)
-  "Add a :TITLE element to :HEAD based on the contents of the first :H1"
-  #'(lambda (doc)
-      (if title
-          (funcall (rewriter :head (appending `((:title ,title)))) doc)
-          (let ((h1 (first (extract :h1 doc))))
-            (when h1
-              (funcall (rewriter :head (appending `((:title ,(just-text (cdr h1)))))) doc))))))
-
-(defun stylize (style &key inline)
-  "Add an :LINK or :STYLE to :HEAD for an external or inline style element."
-  (rewriter
-   :head
-   (appending (if inline
-                  `((:style (:noescape ,style)))
-                  `((:link :href ,style :rel "stylesheet"))))))
-
-(defun enscript (script &key (where :body) (async nil))
-  "Add an SCRIPT tag if script is provided."
-  (if script
-      (rewriter where (appending `((:script ,@(if async '(:async "async")) :src ,script :type "text/javascript"))))
-      #'identity))
-
-(defun script (script)
-  `(:script
-    :src ,(just-text script)
-    :type "text/javascript"
-    :charset "utf-8"))
-
-(defun script/async (script)
-  `(:script
-    :async "async"
-    :src ,(just-text script)
-    :type "text/javascript"
-    :charset "utf-8"))
-
-(defun twitter-widget (has-tweets)
-  (if has-tweets
-      (rewriter :body (appending (list (script/async "https://platform.twitter.com/widgets.js"))))
-      #'identity))
-
-(defun section-marker (x)
-  (declare (ignore x))
-  `(:hr :class "fleuron"))
-
-;;; Helper functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun endnote-marker (note)
-  "Make a :NOTE element into its endnote marker, linking to the note and with an
-ID to allow linking back."
-  (let ((n (second note)))
-    `((:a
-       :id ,(marker-id n)
-       :href ,(fragment (note-id n))
-       :class "marker")
-      ,n)))
-
-(defun endnote-backlinker (note)
-  "Convert the number in a :NOTE element into the target for the endnote marker
-and a link back to the marker."
-  (destructuring-bind (tag n (e1 &rest e1-body) &rest body) note
-    `(,tag
-      (,e1
-       ((:a
-         :id ,(note-id n)
-         :href ,(fragment (marker-id n))
-         :class "backlink")
-        ,n) " "
-       ,@e1-body)
-      ,@body)))
-
-(defun fragment (x)
-  "Make a framgment HREF value."
-  (format nil "#~a" x))
-
-(defun note-id (n)
-  "The id value for the actual footnote number N."
-  (format nil "note_~d" n))
-
-(defun marker-id (n)
-  "The id value for the marker for footnote number N."
-  (format nil "marker_~d" n))
 
 (defun get-linkdefs (doc)
   "Extract the link names and urls."
@@ -188,6 +135,97 @@ the text of the :link stripped of any markup."
   "Contents of the link with any :key removed."
   (rest (funcall (deleter :key) link)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Endnote rewriting
+
+(defun endnotes (doc)
+  "Rewrite a doc with :note elements converted to endnotes."
+  (if (extract :note doc)
+      (funcall
+       (>>>
+        (rewriter :note (numberer))
+        #'(lambda (x) `(,@x (:notes ,@(extract :note x))))
+        (rewriter :notes (rewriter :note (>>> #'endnote-backlinker #'divver)))
+        (rewriter :notes #'divver)
+        (rewriter :body (rewriter :note #'endnote-marker)))
+       doc)
+      doc))
+
+(defun endnote-backlinker (note)
+  "Convert the number in a :NOTE element into the target for the endnote marker
+and a link back to the marker."
+  (destructuring-bind (tag n (e1 &rest e1-body) &rest body) note
+    `(,tag
+      (,e1
+       ((:a
+         :id ,(note-id n)
+         :href ,(fragment (marker-id n))
+         :class "backlink")
+        ,n) " "
+       ,@e1-body)
+      ,@body)))
+
+(defun endnote-marker (note)
+  "Make a :NOTE element into its endnote marker, linking to the note and with an
+ID to allow linking back."
+  (let ((n (second note)))
+    `((:a
+       :id ,(marker-id n)
+       :href ,(fragment (note-id n))
+       :class "marker")
+      ,n)))
+
+(defun fragment (x)
+  "Make a framgment HREF value."
+  (format nil "#~a" x))
+
+(defun note-id (n)
+  "The id value for the actual footnote number N."
+  (format nil "note_~d" n))
+
+(defun marker-id (n)
+  "The id value for the marker for footnote number N."
+  (format nil "marker_~d" n))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; HTMLization
+
+(defun htmlizer (config)
+  (let ((name (first (config :htmlizer config))))
+    (if name
+        #'(lambda (doc) (funcall (symbol-function name) doc config))
+        #'htmlize)))
+
+(defun htmlize (doc)
+  "Default htmlizer used when one isn't specified in the config file. Wrap
+the :body we get from the markup parser in a proper HTML5 document with a
+doctype and proper charset."
+  `(:progn
+    (:noescape "<!DOCTYPE html>")
+    (:html
+      (:head
+       (:meta :charset "UTF-8"))
+      (:body ((:div :id "container") ,@(rest doc))))))
+
+(defun entitle (doc)
+  "Add a :TITLE element to :HEAD based on the contents of the first :H1"
+  (let ((h1 (first (extract :h1 doc))))
+    (if h1
+        (funcall (rewriter :head (appending `((:title ,(just-text (cdr h1)))))) doc)
+        doc)))
+
+(defun twitter-widget (has-tweets)
+  (if has-tweets
+      (rewriter :body
+                (appending
+                 `((:script
+                    :async "async"
+                    :src "https://platform.twitter.com/widgets.js"
+                    :type "text/javascript"
+                    :charset "utf-8"))))
+      #'identity))
+
 (defun just-text (sexp)
   "Textual content of the element as a single string with all markup
 removed."
@@ -198,52 +236,71 @@ removed."
                  (cons (mapcar #'walk x)))))
       (walk sexp))))
 
-(defun formatted-code-section (expr)
-  (and
-   (consp expr)
-   (eql (first expr) :section)
-   (eql (first (second expr)) :formattedcode)))
-
+;; Used in config files
 (defun formatted-code (expr)
-  (destructuring-bind (section (formattedcode (pre text))) expr
-    (declare (ignore section formattedcode pre))
+  (destructuring-bind (pre text) expr
+    (declare (ignore pre))
     `(:pre ,@(nth-value 1 (markup-lite (cons text 0))))))
 
-(defun embedded-tweet (tree)
-  (let ((text (tag-text :text tree))
-        (screenname (tag-text :screenname tree))
-        (handle (tag-text :handle tree))
-        (id (tag-text :id tree))
-        (date (tag-text :date tree)))
-    `(:progn
-       ((:blockquote :class "twitter-tweet" :lang "en")
-        (:p "“" ,text "”")
-        (:noescape "&mdash;")
-        ,screenname "(@" ,handle ") "
-        ((:a :href (:format "https://twitter.com/~a/status/~a" ,handle ,id)) ,date))
-       (:script :async "async" :src "https://platform.twitter.com/widgets.js" :charset "utf-8"))))
-
+;; Used in config files
 (defun tweet-by-id (tree)
   (let ((filename (make-pathname :defaults (merge-pathnames "tweets/") :name (just-text tree))))
     `(:noescape ,(file-text filename))))
 
+;; Used in config files
 (defun chart (tree)
   `(:div :class "chart" :id (:format "chart~a" ,(just-text tree))))
 
-(defun tag-text (tag tree)
-  (mapcan #'just-text (extract tag tree)))
-
-(defun include-from-file (tree)
+;; Used in config files
+(defun sourcecode (tree)
   (let* ((text (string-trim " " (just-text tree)))
          (spc (position #\Space text))
          (file (subseq text 0 spc))
-         (name (subseq text (1+ spc)))
+         (name (if spc (subseq text (1+ spc)) nil))
          (contents (file-text file))
          (lines (split-sequence #\Newline contents)))
-    (flet ((start (line) (search (format nil "8<--- ~a" name) line))
-           (end (line) (search "8<----" line)))
-      (let* ((start (cdr (member-if #'start lines)))
-             (end (member-if #'end start)))
-        (if end
-            `(:pre ,(format nil "~{~&~a~}" (ldiff start end)))
-            (error "Coludn't find include section ~a in ~a" name file))))))
+    (if (not name)
+        `(:pre (:code ,(format nil "~{~a~%~}" (remove-if #'(lambda (line) (search "8<---" line)) lines))))
+        (flet ((start (line) (search (format nil "8<--- ~a" name) line))
+               (end (line) (search "8<----" line)))
+          (let* ((start (cdr (member-if #'start lines)))
+                 (end (member-if #'end start)))
+            (if end
+                `(:pre (:code ,(format nil "~{~&~a~}" (ldiff start end))))
+                (error "Coludn't find include section ~a in ~a" name file)))))))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; This doesn't really belong here. This is specific to how I generate HTML for
+;; my website and is only used specified in a config file.
+
+(defun gigamonkeys-html (doc config)
+  (let ((styles (config :styles config))
+        (scripts (config :scripts config)))
+    `(:progn
+       (:noescape "<!doctype html>")
+       ((:html :lang "en")
+        (:head
+         (:meta :http-equiv "content-type" :content "text/html; charset=UTF-8")
+         (:meta :http-equiv "X-UA-Compatible" :content "IE=edge,chrome=1")
+         ,@(loop for s in styles collecting s)
+         (:noescape "<!--[if lt IE 9]>")(:script :src "//html5shim.googlecode.com/svn/trunk/html5.js")(:noescape "<![endif]-->"))
+
+        (:body
+         ((:div :class "wrap")
+          (:header
+           (:figure (:img :src "../img/monkey.jpg" (:figcaption "Original image by Luc Viatour / " ((:a :href "http://www.Lucnix.be") "www.Lucnix.be")))))
+          ((:div :class "contents") ,@(rest doc))
+          (:footer
+           (:p "Copyright " ,@(config :year config) " Peter Seibel")
+           (:p ((:a :href "mailto:peter@gigamonkeys.com") "peter@gigamonkeys.com") " · "
+               ((:a :href "http://twitter.com/peterseibel") "@peterseibel") " · "
+               ((:a :href "http://github.com/gigamonkey") "gigamonkey"))
+           (:p "Monkey image Luc Viatour / " ((:a :href "http://www.Lucnix.be") "www.Lucnix.be"))))
+         ,@(loop for s in scripts collecting s))))))
+
+(defvar *months* #("UNUSED" "January" "February" "March" "April" "May" "June" "July" "August" "September" "October" "November" "December"))
+
+(defun format-dateline (tree)
+  (destructuring-bind (&key year (month 0) day) (parse-iso-8601 (just-text tree))
+    `((:div :class "dateline") ,(format nil "~d ~a ~d" day (elt *months* month) year))))
