@@ -61,7 +61,7 @@ variable."
 
   (verbatim-line
    indentation
-   (=> (text (many1 (and (! eol) any-char))))
+   (=> (text (many1 (and (! (or eol section-divider)) any-char))))
    (or eol eod))
 
   (ordered-list (=> (indented 2 (many1 (list-item "#"))) `(:ol ,@_)))

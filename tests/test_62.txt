@@ -1,0 +1,13 @@
+Regular paragraph
+
+   Verbatim text
+
+                                  §
+
+Regular
+
+   Verbatim text
+
+                                  §
+
+   More verbatim.
