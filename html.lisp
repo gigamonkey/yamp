@@ -9,22 +9,25 @@
 (defun generate-html (file)
   "Generate HTML for the markup file in the same location except with an .html
 extension."
-  (let ((*default-pathname-defaults* (parent-directory file)))
-    (let* ((config (load-config file))
-           (output (first (config :output config)))
-           (output-file
-            (make-pathname
-             :type "html"
-             :defaults (if output (merge-pathnames output file) file))))
-      (with-output-to-file (out (ensure-directories-exist output-file))
-        (with-text-output (out)
-          (monkeylib-html:emit-html
-           (markup-html (markup (file-text file)) config))))))
+  (multiple-value-bind (output-file config) (html-filename file)
+    (with-output-to-file (out (ensure-directories-exist output-file))
+      (with-text-output (out)
+        (monkeylib-html:emit-html
+         (markup-html (markup (file-text file)) config)))))
+  ;; Return t here since we invoke this from slime which chokes on the pathname.
   t)
+
+(defun html-filename (file)
+  "Translate filenae of Markup file to the HTML file to be generated and load
+the corresponding config file."
+  (let* ((*default-pathname-defaults* (parent-directory file))
+         (config (load-config file))
+         (output (first (config :output config))))
+    (values (make-pathname :type "html" :defaults (if output (merge-pathnames output file) file)) config)))
 
 (defun markup-html (doc config)
   (let ((has-tweets (extract :tweet doc))
-        (dateline (first (extract :dateline doc))))
+        (dateline (or (first (extract :dateline doc)) (config :dateline config))))
     (destructuring-bind (&key year &allow-other-keys) (parse-iso-8601 (just-text dateline))
       (let ((config (cons `(:year ,year) config)))
         (funcall
@@ -41,7 +44,7 @@ extension."
           (rewriter :section #'(lambda (s) (divver (second s))))
 
           ;; Section markers
-          (rewriter :§ (replacing-with '(:hr :class "fleuron")))
+          (rewriter :§ (replacing-with (first (config :section-marker config))))
 
           ;; Spans.
           (spans-rewriter (config :spans config))
@@ -49,7 +52,9 @@ extension."
           ;; Turn into HTML
           (htmlizer config)
 
-          #'entitle
+          #'(lambda (d)
+              (if (eql (config :title config) :auto) (entitle d) d))
+
           (twitter-widget has-tweets))
          doc)))))
 
@@ -79,14 +84,18 @@ extension."
              (with-open-file (in f :if-does-not-exist nil)
                (when in
                  (loop for o = (read in nil eof) until (eql o eof) collecting o))))
-             (combine (acc file) (merge-alists acc (read-file file))))
+             (combine (acc file) (merge-alists acc (read-file file)))
+             (config-location (filename)
+               (if (file-exists-p "./config/")
+                   (merge-pathnames "config/" filename)
+                   filename)))
       (let ((files (list
-                    (make-pathname :name "defaults" :type "config" :defaults (merge-pathnames "config/" filename))
-                    (make-pathname :type "config" :defaults (merge-pathnames "config/" filename)))))
+                    (make-pathname :name "defaults" :type "config" :defaults (config-location filename))
+                    (make-pathname :type "config" :defaults (config-location filename)))))
         (let ((from-files (reduce #'combine files :initial-value ())))
           (if (config :output from-files)
               from-files
-              (cons `(:output ,(default-output filename)) from-files)))))))
+              (cons `(:output ,(default-output-config filename)) from-files)))))))
 
 (defun merge-alists (a1 a2)
   (flet ((combine (acc next)
@@ -97,8 +106,10 @@ extension."
                    (cons `(,k ,@v) acc))))))
     (nreverse (reduce #'combine a2 :initial-value a1))))
 
-(defun default-output (filename)
-  (merge-pathnames (pathname-as-directory (pathname-name filename)) "web/index"))
+(defun default-output-config (filename)
+  (if (file-exists-p "./web/")
+      (make-pathname :directory (list :relative "web" (pathname-name filename)) :name "index")
+      filename))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Link rewriting
@@ -304,3 +315,100 @@ removed."
 (defun format-dateline (tree)
   (destructuring-bind (&key year (month 0) day) (parse-iso-8601 (just-text tree))
     `((:div :class "dateline") ,(format nil "~d ~a ~d" day (elt *months* month) year))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Amazon Kindle Direct Publishing
+
+(defun kdp-html (doc config)
+  (let ((styles (config :styles config)))
+    `(:progn
+       (:noescape "<!doctype html>")
+       ((:html :lang "en")
+        (:head ,@(loop for s in styles collecting s))
+        (:body ,@(rest (funcall
+                        (>>>
+                         (deleter :h1)
+                         #'style-kdp-paragraphs
+                         (retagger :h2 :h1))
+                        (anchor-chapters (latin-1-safe doc)))))))))
+
+(defun style-kdp-paragraphs (doc)
+  (labels ((non-paragraph-element (x)
+             (and (consp x) (not (eql (car x) :p))))
+
+           (paragraph-element (x)
+             (and (consp x) (eql (car x) :p)))
+
+           (walk (tree)
+             (cond
+               ((and (consp tree)
+                     (non-paragraph-element (first tree))
+                     (paragraph-element (second tree)))
+                `(,(walk (first tree))
+                   ,(walk `((:p :class "noindent") ,@(rest (second tree))))
+                   ,@(walk (rest (rest tree)))))
+               ((consp tree)
+                `(,(walk (first tree)) ,@(walk (rest tree))))
+               (t tree))))
+    (walk doc)))
+
+(defun generate-kdp-toc (file)
+  (let ((chapters (extract :h2 (markup (file-text file))))
+        (output-file (make-pathname :name "toc" :defaults (html-filename file))))
+    (with-output-to-file (out output-file)
+      (with-text-output (out)
+        (monkeylib-html:emit-xhtml
+         `(:progn
+            (:? "xml" :version 1.0 :encoding "utf-8")
+            (:noescape "<!DOCTYPE html>")
+            ((:html :xmlns "http://www.w3.org/1999/xhtml"
+                    :xmlns\:epub "http://www.idpf.org/2007/ops")
+             (:body
+              ((:nav :epub\:type "toc")
+               (:ol
+                ,@(loop for i from 1 for c in chapters collecting
+                       `(:li (:a :href ,(format nil "grid.html#chapter_~d" i) ,(just-text c))))))
+              ((:nav :epub\:type "landmarks" :class "hidden-tag" :hidden "hidden")
+               ((:ol :class "none" :epub\:type "list")
+                (:li (:a :epub\:type "toc" :href "toc.html" "Table of Contents"))))))))))))
+
+(defun generate-kdp-titlepage (file)
+  (multiple-value-bind (html-output config) (html-filename file)
+    (let ((title (first (extract :h1 (markup (file-text file)))))
+          (output-file (make-pathname :name "title" :defaults html-output))
+          (author (first (config :author config)))
+          (copyright (first (config :copyright-year config))))
+      (with-output-to-file (out output-file)
+        (with-text-output (out)
+          (monkeylib-html:emit-html
+           `(:html
+              (:head
+               (:link :rel "stylesheet" :type "text/css" :href "style.css"))
+              (:body
+               ((:p :class "title") ,(just-text title))
+               ((:p :class "author") ,author)
+               ((:p :class "copyright") (:noescape "&#x00a9;") ,(format nil " ~d ~a" copyright author))))))))))
+
+(defun anchor-chapters (doc)
+  (let ((c 0))
+    (flet ((add-anchor (tree) `(:h2 :id ,(format nil "chapter_~d" (incf c)) ,@(rest tree))))
+      (funcall (rewriter :h2 #'add-anchor) doc))))
+
+(defun latin-1-safe (doc)
+  (labels ((walk (tree)
+             (typecase tree
+               (string (entify tree 0))
+               (cons (list (mapcan #'walk tree)))
+               (t (list tree)))))
+    (first (walk doc))))
+
+(defun entify (text pos)
+  (when (< pos (length text))
+    (let ((nextpos (position-if #'(lambda (c) (> (char-code c) 255)) text :start pos)))
+      (cond
+        ((null nextpos)
+         (list (subseq text pos)))
+        ((= nextpos pos)
+         `((:noescape ,(format nil "&#x~x;" (char-code (char text nextpos)))) ,@(entify text (1+ nextpos))))
+        (t
+         `(,(subseq text pos nextpos) ,@(entify text nextpos)))))))
