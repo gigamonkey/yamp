@@ -137,8 +137,7 @@ variable."
   (newline (! blank) eol indentation '#\Space)
 
   (blank
-   (or eol eod)
-   (or (many1 eol) eod))
+   (or eod (and eol (or eol eod))))
 
   (plain-char (in-subdoc (not-char "}") any-char))
 

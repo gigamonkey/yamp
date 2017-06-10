@@ -14,7 +14,6 @@ That has its own paragraphs. With \i{formatting foo} in them.
 
 And another.} And this is the rest of the third main paragraph.
 
-
 And this is a fourth paragraph.\note{This is a note.
 
 That has its own paragraphs.
@@ -24,7 +23,6 @@ That has its own paragraphs.
   # With a few items.
 
 And another paragraph.} And this is the rest of the fourth main paragraph.
-
 
 And this is a fifth paragraph.\note{This is a note.
 

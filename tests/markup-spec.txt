@@ -202,7 +202,6 @@ A Markup processor will need to provide some more or less convenient
 way to specify that certain tag names should be parsed as
 sub-documents rather than character markup.
 
-
 *** Escapes
 
 Outside of verbatim sections, a backslash can escape any character
