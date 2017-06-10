@@ -18,7 +18,8 @@
    (:file "html"        :depends-on ("packages" "trees"))
    (:file "tests"       :depends-on ("packages" "markup")))
   :depends-on
-  (:com.gigamonkeys.json
+  (:cl-ppcre
+   :com.gigamonkeys.json
    :com.gigamonkeys.macro-utilities
    :com.gigamonkeys.pathnames
    :com.gigamonkeys.utilities
