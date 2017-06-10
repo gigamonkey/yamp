@@ -35,6 +35,15 @@ replaces them with the result of FN."
                  tree)))
     #'walk))
 
+(defun retagger (old new)
+  "Retag all trees tagged with OLD with NEW"
+  (labels ((walk (tree)
+             (if (consp tree)
+                 (if (eql (car tree) old)
+                     `(,new ,@(mapcar #'walk (cdr tree)))
+                     (mapcar #'walk tree))
+                 tree)))
+    #'walk))
 
 (defun deleter (tag)
   "A function that deletes all subtrees tagged with TAG."
