@@ -6,5 +6,3 @@ This is a regular paragraph.
      with another line..
 
 Another regular paragraph.
-
-

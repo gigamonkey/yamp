@@ -23,7 +23,8 @@ variable."
 
   (element
    indentation
-   (or header
+   (or extra-blank
+       header
        section-one-line
        section
        section-divider
@@ -34,6 +35,8 @@ variable."
        blockquote
        linkdef
        paragraph))
+
+  (extra-blank eol `(:blank))
 
   (header
    (-> (many1 "*") stars)
