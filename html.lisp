@@ -9,26 +9,35 @@
 (defun generate-html (file)
   "Generate HTML for the markup file in the same location except with an .html
 extension."
-  (multiple-value-bind (output-file config) (html-filename file)
-    (with-output-to-file (out (ensure-directories-exist output-file))
-      (with-text-output (out)
-        (monkeylib-html:emit-html
-         (markup-html (markup (file-text file)) config)))))
-  ;; Return t here since we invoke this from slime which chokes on the pathname.
-  t)
+  (let ((*default-pathname-defaults* (parent-directory file)))
+    (multiple-value-bind (output-file config) (html-filename file)
+      (when output-file
+        (with-output-to-file (out (ensure-directories-exist output-file))
+          (with-text-output (out)
+            (monkeylib-html:emit-html
+             (markup-html (markup (file-text file)) config))))
+        ;; Return t here since we invoke this from slime which chokes on the pathname.
+        (namestring (truename output-file))))))
 
 (defun html-filename (file)
   "Translate filenae of Markup file to the HTML file to be generated and load
 the corresponding config file."
-  (let* ((*default-pathname-defaults* (parent-directory file))
-         (config (load-config file))
-         (output (first (config :output config))))
-    (values (make-pathname :type "html" :defaults (if output (merge-pathnames output file) file)) config)))
+  (let ((config (load-config file)))
+    (when config
+      (let ((root-dir (merge-pathnames (first (config :directory config)) file))
+            (dir (first (last (pathname-directory file))))
+            (name (pathname-name file)))
+        (values
+         (make-pathname :name (if (string= name dir) "index" name)
+                        :type "html"
+                        :directory `(,@(pathname-directory root-dir) ,dir))
+
+         config)))))
 
 (defun markup-html (doc config)
   (let ((has-tweets (extract :tweet doc))
         (dateline (or (first (extract :dateline doc)) (config :dateline config))))
-    (destructuring-bind (&key year &allow-other-keys) (parse-iso-8601 (just-text dateline))
+    (destructuring-bind (&key year &allow-other-keys) (or (parse-iso-8601 (just-text dateline)) (progn (warn "No dateline!") '(:year 2017)))
       (let ((config (cons `(:year ,year) config)))
         (funcall
          (>>>
@@ -38,7 +47,7 @@ the corresponding config file."
           (rewriter :img #'(lambda (img) `(:img :src ,@(rest img))))
 
           ;; Special sections specified in config file.
-          (section-rewriter (config :sections config))
+          (section-rewriter (config :sections config) config)
 
           ;; Other sections get turned into divs.
           (rewriter :section #'(lambda (s) (divver (second s))))
@@ -63,13 +72,13 @@ the corresponding config file."
     #'(lambda (doc)
         (reduce #'apply-spanner spans :initial-value doc))))
 
-(defun section-rewriter (sections)
+(defun section-rewriter (sections config)
   (labels ((apply-section (d s)
              (destructuring-bind (tag sym) s
                (funcall (rewriter :section (if-section-p tag (symbol-function sym))) d)))
            (if-section-p (tag fn)
              #'(lambda (tree)
-                 (if (eql (car (second tree)) tag) (funcall fn (second tree)) tree))))
+                 (if (eql (car (second tree)) tag) (funcall fn (second tree) config) tree))))
     #'(lambda (doc)
         (reduce #'apply-section sections :initial-value doc))))
 
@@ -79,23 +88,36 @@ the corresponding config file."
 (defun config (key config) (cdr (assoc key config)))
 
 (defun load-config (filename)
-  (let ((eof '#:eof))
-    (labels ((read-file (f)
-             (with-open-file (in f :if-does-not-exist nil)
-               (when in
-                 (loop for o = (read in nil eof) until (eql o eof) collecting o))))
-             (combine (acc file) (merge-alists acc (read-file file)))
-             (config-location (filename)
-               (if (file-exists-p "./config/")
-                   (merge-pathnames "config/" filename)
-                   filename)))
-      (let ((files (list
-                    (make-pathname :name "defaults" :type "config" :defaults (config-location filename))
-                    (make-pathname :type "config" :defaults (config-location filename)))))
-        (let ((from-files (reduce #'combine files :initial-value ())))
-          (if (config :output from-files)
-              from-files
-              (cons `(:output ,(default-output-config filename)) from-files)))))))
+  (let ((config-file (find-up filename)))
+    (when config-file
+      (let ((h (make-hash-table)))
+        (labels ((add-clause (clause)
+                   (if (gethash (first clause) h)
+                       (appendf (gethash (first clause) h) (rest clause))
+                       (setf (gethash (first clause) h) (rest clause))))
+                 (clauses (file)
+                   (loop for (tag . rest) in (file->list file) do
+                        (cond
+                          ((eql tag :include)
+                           (clauses (merge-pathnames (first rest) file)))
+                          ((stringp tag)
+                           (when (string= tag (pathname-name filename))
+                             (dolist (clause rest) (add-clause clause))))
+                          (t (add-clause (cons tag rest)))))))
+          (clauses config-file)
+          (hash-table-alist h))))))
+
+(defun find-up (name)
+  (labels ((root-p (dir)
+             (eql (length (pathname-directory dir)) 1))
+           (up (dir)
+             (let ((name (make-pathname :name "config" :type "sexp" :defaults dir)))
+               (cond
+                 ((probe-file name) name)
+                 ((root-p dir) nil)
+                 (t (up (parent-directory dir)))))))
+    (up (parent-directory name))))
+
 
 (defun merge-alists (a1 a2)
   (flet ((combine (acc next)
@@ -248,22 +270,25 @@ removed."
       (walk sexp))))
 
 ;; Used in config files
-(defun formatted-code (expr)
+(defun formatted-code (expr config)
+  (declare (ignore config))
   (destructuring-bind (pre text) expr
     (declare (ignore pre))
     `(:pre ,@(nth-value 1 (markup-lite (cons text 0))))))
 
 ;; Used in config files
-(defun tweet-by-id (tree)
-  (let ((filename (make-pathname :defaults (merge-pathnames "tweets/") :name (just-text tree))))
+(defun tweet-by-id (tree config)
+  (let ((filename (make-pathname :defaults (first (config :tweets config)) :name (just-text tree))))
     `(:noescape ,(file-text filename))))
 
 ;; Used in config files
-(defun chart (tree)
+(defun chart (tree config)
+  (declare (ignore config))
   `(:div :class "chart" :id (:format "chart~a" ,(just-text tree))))
 
 ;; Used in config files
-(defun sourcecode (tree)
+(defun sourcecode (tree config)
+  (declare (ignore config))
   (let* ((text (string-trim " " (just-text tree)))
          (spc (position #\Space text))
          (file (subseq text 0 spc))
@@ -312,7 +337,8 @@ removed."
 
 (defvar *months* #("UNUSED" "January" "February" "March" "April" "May" "June" "July" "August" "September" "October" "November" "December"))
 
-(defun format-dateline (tree)
+(defun format-dateline (tree config)
+  (declare (ignore config))
   (destructuring-bind (&key year (month 0) day) (parse-iso-8601 (just-text tree))
     `((:div :class "dateline") ,(format nil "~d ~a ~d" day (elt *months* month) year))))
 
