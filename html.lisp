@@ -35,31 +35,25 @@ the corresponding config file."
          config)))))
 
 (defun markup-html (doc config)
-  (let ((has-tweets (extract :tweet doc))
-        (dateline (or (first (extract :dateline doc)) (config :dateline config))))
-    (destructuring-bind (&key year &allow-other-keys) (or (parse-iso-8601 (just-text dateline)) (progn (warn "No dateline!") '(:year 2017)))
+  "Transform the tree produced by the Markup parser into a Monkeylib HTML tree."
+  (let ((has-tweets (has :tweet doc)))
+    (destructuring-bind (&key year &allow-other-keys) (dateline doc config)
       (let ((config (cons `(:year ,year) config)))
         (funcall
          (>>>
-          ;; Massaging the Markup structure into HTML.
-          #'links
-          #'endnotes
-          (rewriter :img #'(lambda (img) `(:img :src ,@(rest img))))
+          ;; Whole document rewriters.
+          (preprocessors config)
 
-          ;; Special sections specified in config file.
-          (section-rewriter (config :sections config) config)
+          ;; Special section rewriters
+          (section-rewriters config)
 
-          ;; Other sections get turned into divs.
-          (rewriter :section #'(lambda (s) (divver (second s))))
 
-          ;; Section markers
           (rewriter :§ (replacing-with (first (config :section-marker config))))
           (rewriter :blank (replacing-with (first (config :blank config))))
 
-          ;; Spans.
-          (spans-rewriter (config :spans config))
+          (spans-rewriter config)
 
-          ;; Turn into HTML
+          ;; Finally, turn into Monkeylib HTML
           (htmlizer config)
 
           #'(lambda (d)
@@ -68,12 +62,24 @@ the corresponding config file."
           (twitter-widget has-tweets))
          doc)))))
 
-(defun spans-rewriter (spans)
+(defun dateline (doc config)
+  (parse-iso-8601
+   (or
+    (second (first (extract :dateline doc)))
+    (second (config :dateline config))
+    (format-iso-8601-time (now) :omit-time t))))
+
+(defun spans-rewriter (config)
   (flet ((apply-spanner (d s) (funcall (rewriter s #'spanner) d)))
     #'(lambda (doc)
-        (reduce #'apply-spanner spans :initial-value doc))))
+        (reduce #'apply-spanner (config :spans config) :initial-value doc))))
 
-(defun section-rewriter (sections config)
+(defun preprocessors (config)
+  (labels ((preprocess (d p) (funcall (symbol-function p) d config)))
+    #'(lambda (doc)
+        (reduce #'preprocess (config :preprocessors config) :initial-value doc))))
+
+(defun section-rewriters (config)
   (labels ((apply-section (d s)
              (destructuring-bind (tag sym) s
                (funcall (rewriter :section (if-section-p tag (symbol-function sym))) d)))
@@ -81,7 +87,9 @@ the corresponding config file."
              #'(lambda (tree)
                  (if (eql (car (second tree)) tag) (funcall fn (second tree) config) tree))))
     #'(lambda (doc)
-        (reduce #'apply-section sections :initial-value doc))))
+        (funcall
+         (rewriter :section #'(lambda (s) (divver (second s))))
+         (reduce #'apply-section (config :sections config) :initial-value doc)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Configuration
@@ -120,24 +128,11 @@ the corresponding config file."
     (up (parent-directory name))))
 
 
-(defun merge-alists (a1 a2)
-  (flet ((combine (acc next)
-           (destructuring-bind (k . v) next
-             (let ((in-a1 (assoc k acc)))
-               (if in-a1
-                   (cons `(,k ,@(cdr in-a1) ,@v) (remove k acc :key #'car))
-                   (cons `(,k ,@v) acc))))))
-    (nreverse (reduce #'combine a2 :initial-value a1))))
-
-(defun default-output-config (filename)
-  (if (file-exists-p "./web/")
-      (make-pathname :directory (list :relative "web" (pathname-name filename)) :name "index")
-      filename))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Link rewriting
 
-(defun links (doc)
+(defun links (doc config)
+  (declare (ignore config))
   "Rewrite the doc so :link elements are expanded into :a tags with the
 appropriate link."
   (let ((linkdefs (get-linkdefs doc)))
@@ -157,13 +152,13 @@ appropriate link."
   #'(lambda (x) `((:a :href ,(get-url (link-key x) links)) ,@(link-contents x))))
 
 (defun get-url (link h)
-  "Lookup the URLy for a link. Warn if none found."
+  "Lookup the URL for a link. Warn if none found."
   (or (gethash link h) (progn (warn "No link found for ~a" link) "nowhere.html")))
 
 (defun link-key (link)
   "The key extracted from a :link, either the explicit :key value or
 the text of the :link stripped of any markup."
-  (just-text (or (find-if #'(lambda (x) (and (consp x) (eql (car x) :key))) link) link)))
+  (just-text (or (extract :key link) link)))
 
 (defun link-contents (link)
   "Contents of the link with any :key removed."
@@ -172,9 +167,10 @@ the text of the :link stripped of any markup."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Endnote rewriting
 
-(defun endnotes (doc)
+(defun endnotes (doc config)
+  (declare (ignore config))
   "Rewrite a doc with :note elements converted to endnotes."
-  (if (extract :note doc)
+  (if (has :note doc)
       (funcall
        (>>>
         (rewriter :note (numberer))
@@ -223,6 +219,14 @@ ID to allow linking back."
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Images
+
+(defun images (doc config)
+  (declare (ignore config))
+  (funcall (rewriter :img #'(lambda (img) `(:img :src ,@(rest img)))) doc))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; HTMLization
 
 (defun htmlizer (config)
@@ -267,7 +271,7 @@ removed."
     (labels ((walk (x)
                (typecase x
                  (string (write-string x s))
-                 (cons (mapcar #'walk x)))))
+                 (cons (mapcar #'walk (rest x))))))
       (walk sexp))))
 
 ;; Used in config files
@@ -279,8 +283,9 @@ removed."
 
 ;; Used in config files
 (defun tweet-by-id (tree config)
-  (let ((filename (make-pathname :defaults (first (config :tweets config)) :name (just-text tree))))
-    `(:noescape ,(file-text filename))))
+  (let ((tweets (first (config :tweets config)))
+        (id (just-text tree)))
+    `(:noescape ,(file-text (make-pathname :name id :defaults tweets)))))
 
 ;; Used in config files
 (defun chart (tree config)
