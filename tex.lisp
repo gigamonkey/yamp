@@ -48,7 +48,7 @@
        (nyi (emit-tex-sub-document stream element)))
       ((member tag '(:i :b :code))
        (emit-tex-span stream element))
-      ((eql tag :§)
+      ((eql tag :blank)
        (format stream "~&\\vskip 1em~&\\noindent"))
       (t
        (error "Don't know how to render tag ~s" tag)))))
