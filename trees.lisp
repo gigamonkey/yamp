@@ -19,6 +19,13 @@
         (list sexp)
         (mapcan #'(lambda (x) (extract tag x)) sexp))))
 
+(defun has (tag sexp)
+  "Are there any TAG elements in SEXP?"
+  (when (consp sexp)
+    (or (eql (car sexp) tag)
+        (has tag (first sexp))
+        (has tag (rest sexp)))))
+
 (defun rewriter (tag fn)
   "A function that given a tree finds every instance of TAG'd elements and
 replaces them with the result of FN."
