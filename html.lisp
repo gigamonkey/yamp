@@ -54,6 +54,7 @@ the corresponding config file."
 
           ;; Section markers
           (rewriter :§ (replacing-with (first (config :section-marker config))))
+          (rewriter :blank (replacing-with (first (config :blank config))))
 
           ;; Spans.
           (spans-rewriter (config :spans config))
