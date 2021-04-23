@@ -7,8 +7,8 @@ in Common Lisp, the first language I implemented Markup in. While I
 had to implement a somewhat fancy macro to do it, the grammar here is
 even more streamlined than the Haskell version.
 
-This is the markup system I used for writing all three of my books: [Practical Common Lisp](http://www.gigamonkeys.com/book/),
-[Coders at Work](http://www.codersatwork.com/), and [The Grid](https://www.amazon.com/gp/product/B072K1JM33/ref=as_li_tl?ie=UTF8&tag=gigamonkeys-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=B072K1JM33&linkId=a276d7ed7eda8c1d56059b8e07273dca).
+This is the markup system I used for writing all three of my books: _[Practical Common Lisp](http://www.gigamonkeys.com/book/)_,
+_[Coders at Work](http://www.codersatwork.com/)_, and _[The Grid](https://www.amazon.com/gp/product/B072K1JM33/ref=as_li_tl?ie=UTF8&tag=gigamonkeys-20&camp=1789&creative=9325&linkCode=as2&creativeASIN=B072K1JM33&linkId=a276d7ed7eda8c1d56059b8e07273dca)_.
 
 See also:
 
